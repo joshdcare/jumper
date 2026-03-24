@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import 'dotenv/config';
 import { Command, CommanderError } from 'commander';
 import { STEPS, ENV_CONFIGS } from './types.js';
 import type { Step, Tier, Vertical, CliOptions, ProviderContext } from './types.js';
