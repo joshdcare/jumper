@@ -1,6 +1,9 @@
 export const providerCreateDefaults = {
   serviceType: 'CHILD_CARE',
   zipcode: '72204',
+  firstName: 'Martina',
+  lastName: 'Goodram',
+  gender: 'FEMALE',
   howDidYouHearAboutUs: 'OTHER',
   referrerCookie: '',
 };
@@ -104,13 +107,13 @@ export const notificationSettingCreateInput = {
 
 export const pricingConfig = {
   premium: {
-    pricingSchemeId: 'JUN231',
-    pricingPlanId: 'JUN231001',
-    promoCode: 'SYSTEM$4DISCOUNT',
+    pricingSchemeId: 'PRO_FEAT_FEB2512',
+    pricingPlanId: 'PRO_FEAT_FEB2512001',
+    promoCode: '',
   },
   basic: {
-    pricingSchemeId: 'PROVIDER_PAID_BASIC3',
-    pricingPlanId: 'PROVIDER_PAID_BASIC3_001',
+    pricingSchemeId: 'PRO_PB_FEB2512',
+    pricingPlanId: 'PRO_PB_FEB2512001',
     promoCode: '',
   },
 };

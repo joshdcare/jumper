@@ -9,7 +9,10 @@ description: >-
 
 # QA Provider Factory
 
-CLI tool that creates provider accounts at specific enrollment checkpoints via API calls, so QA can test any point in the flow without manually clicking through enrollment.
+CLI tool that creates provider accounts at specific enrollment checkpoints, so QA can test any point in the flow without manually clicking through enrollment.
+
+- **Web**: Drives a real Chromium browser through the enrollment pages, stopping at the target page with the browser open for manual testing.
+- **Mobile**: Uses API calls to set up account state at specific checkpoints.
 
 ## Prerequisites
 
@@ -19,8 +22,8 @@ CLI tool that creates provider accounts at specific enrollment checkpoints via A
 
 ```
 CZEN_API_KEY=<Care.com API key>
-STRIPE_KEY=<Stripe test key — required for upgraded/fully-enrolled>
-MYSQL_DB_PASS_DEV=<MySQL read-only password — required for fully-enrolled, optional otherwise>
+STRIPE_KEY=<Stripe test key — required for mobile upgraded/fully-enrolled>
+MYSQL_DB_PASS_DEV=<MySQL read-only password — required for mobile fully-enrolled, optional otherwise>
 ```
 
 Ask a team lead for these values if you don't have them.
@@ -38,20 +41,34 @@ npm run dev -- --step <step> --platform <platform> [--tier basic|premium]
 
 ### Web steps (`--platform web`, default)
 
-| Step | Where the user lands |
-|------|---------------------|
-| `account-created` | Account exists, no profile |
-| `profile-complete` | Full profile with availability and biography |
-| `pre-upgrade` | Stripe payment method linked, no subscription |
-| `upgraded` | Subscription purchased (use `--tier`) |
-| `at-disclosure` | Background check disclosure accepted |
-| `fully-enrolled` | BGC cleared, fully enrolled |
+Web uses Playwright to navigate a real browser through each enrollment page. The browser stays open at the target step for manual testing.
+
+| Step | URL / Page |
+|------|-----------|
+| `at-get-started` | `/app/vhp/get-started` |
+| `at-soft-intro-combined` | `/app/vhp/provider/soft-intro-combined` |
+| `at-vertical-selection` | `/app/vhp/vertical-triage` |
+| `at-location` | `/app/enrollment/provider/mv/location` |
+| `at-preferences` | `/app/enrollment/provider/mv/preferences` |
+| `at-family-count` | `/app/enrollment/provider/mv/family-count` |
+| `at-account-creation` | `/app/enrollment/provider/mv/account/combined` |
+| `at-family-connection` | `/app/enrollment/provider/mv/family-connection` |
+| `at-safety-screening` | `/app/enrollment/provider/mv/safety-screening` |
+| `at-subscriptions` | `/app/ratecard/provider/rate-card` |
+| `at-basic-payment` | `/app/checkout` (Basic tier) |
+| `at-premium-payment` | `/app/checkout` (Premium tier) |
+| `at-app-download` | `/app/enrollment/provider/mv/app-download` |
+
+Steps before `at-account-creation` land on the page without creating an account. Steps after `at-account-creation` create the account and print credentials.
 
 ### Mobile steps (`--platform mobile`)
+
+Mobile uses API calls to set up account state at each checkpoint.
 
 | Step | Where the user lands |
 |------|---------------------|
 | `account-created` | Account exists, at "Where are you looking for jobs?" |
+| `at-build-profile` | At "Build Your Profile" screen |
 | `at-availability` | Profile built, at "Your availability" screen |
 | `profile-complete` | Availability + bio set, past profile |
 | `upgraded` | Subscription purchased (use `--tier`) |
@@ -61,22 +78,69 @@ npm run dev -- --step <step> --platform <platform> [--tier basic|premium]
 ## Common Commands
 
 ```bash
-# Mobile user at availability screen
+# Web — stop at the location page
+npm run dev -- --step at-location --platform web
+
+# Web — stop at basic checkout page
+npm run dev -- --step at-basic-payment --platform web
+
+# Web — stop at premium checkout page
+npm run dev -- --step at-premium-payment --platform web
+
+# Web — stop at account creation form
+npm run dev -- --step at-account-creation --platform web
+
+# Mobile — user at availability screen
 npm run dev -- --step at-availability --platform mobile
 
-# Fully enrolled premium user (mobile)
+# Mobile — fully enrolled premium user
 npm run dev -- --step fully-enrolled --platform mobile --tier premium
-
-# Web user at disclosure
-npm run dev -- --step at-disclosure --platform web
-
-# Basic mobile user ready for testing
-npm run dev -- --step fully-enrolled --platform mobile --tier basic
 ```
 
 ## Output
 
-The CLI prints credentials and metadata for the created user:
+### Web output (before account creation)
+
+```
+  ⏳ Starting web enrollment flow...
+
+  ✓ at-get-started
+  ✓ at-soft-intro-combined
+  ✓ at-vertical-selection
+  ✓ at-location
+
+✓ Browser stopped at: at-preferences
+  URL: https://www.dev.carezen.net/app/enrollment/provider/mv/preferences
+
+  Suggested credentials (for the account creation step):
+    Email:      prov-abc123@care.com
+    Password:   letmein1
+
+  Close the browser when you're done.
+```
+
+### Web output (after account creation)
+
+Steps past `at-account-creation` print MemberId, UUID, and Vertical — the same info as mobile:
+
+```
+  ✓ at-account-creation
+  ✓ at-family-connection (account created)
+  ✓ at-safety-screening
+
+✓ Browser stopped at: at-safety-screening
+  URL: https://www.dev.carezen.net/app/enrollment/provider/mv/safety-screening
+
+  Email:      prov-abc123@care.com
+  Password:   letmein1
+  MemberId:   1774484793
+  UUID:       a6fd308d-258b-4c24-8251-0c0e0b5778e0
+  Vertical:   CHILD_CARE
+
+  Close the browser when you're done.
+```
+
+### Mobile output
 
 ```
 ✓ Provider created at step: fully-enrolled (mobile)
@@ -88,28 +152,45 @@ The CLI prints credentials and metadata for the created user:
   Vertical:   CHILD_CARE
 ```
 
+## Test Data
+
 All accounts use:
 - **Password:** `letmein1`
 - **Name:** Martina Goodram
+- **ZIP code:** 72204 (entered at the `at-location` step)
 - **Address:** 28965 Homewood Plaza, Little Rock, AR 72204
 - **DOB:** 07/26/1995
 - **SSN:** 490-95-9347 (for IDV/screening pass)
+- **Credit card:** 4111 1111 1111 1111, Exp 09/32, CVV 123, Billing ZIP 72204
+
+### What the web flow fills in automatically
+
+| Step | Fields entered |
+|------|---------------|
+| `at-vertical-selection` | Selects "Child Care" vertical |
+| `at-location` | ZIP code `72204` |
+| `at-account-creation` | First/last name, email, password, gender, age checkbox |
+| `at-basic-payment` / `at-premium-payment` | Name on card, credit card number, expiration, CVV, billing ZIP (via Stripe Elements) |
 
 ## Known Limitations
 
-### Detailed availability calendar
+### Web selectors
+
+The web flow uses Playwright selectors (role, label, text) to interact with enrollment pages. If a page's UI changes, selectors in `src/steps/web-flow.ts` may need updating. When a selector fails, the browser stays open for debugging.
+
+### Detailed availability calendar (mobile)
 
 The mobile app's "Your Services & Availability" screen reads from a legacy MySQL calendar table. The factory sets:
 - Full-time preference (visible in the app)
 - `hasMemberEverFilledOneTimeAvailability` flag (acknowledged)
 - REST availability data (Mon-Fri 9am-5pm)
 
-However, the **detailed day/time grid** in the app requires a one-time manual save: open "Your Services & Availability" > tap Edit > Save. This populates the legacy calendar entries.
+However, the **detailed day/time grid** in the app requires a one-time manual save: open "Your Services & Availability" > tap Edit > Save.
 
 ### Platform notes
 
 - **Mobile** targets Android only. iOS enrollment has inconsistencies — avoid iOS for now.
-- **Web** does not have an `at-availability` step (availability is part of `profile-complete`).
+- **Web** and **mobile** use completely different step names and execution strategies.
 
 ## Troubleshooting
 
@@ -117,9 +198,9 @@ However, the **detailed day/time grid** in the app requires a one-time manual sa
 |---------|-----|
 | `CZEN_API_KEY environment variable is required` | Create `.env` with the three required variables |
 | `Error: browserType.launch` | Run `npx playwright install chromium` |
-| Auth token fails | VPN must be connected for SPI endpoints |
-| BGC fails at Sterling callback | Check that `MYSQL_DB_PASS_DEV` is set — the enrollment step needs DB access |
-| User lands on wrong screen | Verify `--platform` flag matches the device you're testing on |
+| Web flow selector fails | Browser stays open for debugging. Update selectors in `src/steps/web-flow.ts` |
+| Auth token fails (mobile) | VPN must be connected for SPI endpoints |
+| BGC fails at Sterling callback (mobile) | Check that `MYSQL_DB_PASS_DEV` is set |
 
 ## Architecture (for contributors)
 
@@ -134,7 +215,8 @@ src/
 ├── payloads/
 │   └── childcare.ts      # Default payloads for Child Care vertical
 └── steps/
-    ├── registry.ts       # Step pipelines (web + mobile)
+    ├── web-flow.ts       # Playwright browser enrollment (web)
+    ├── registry.ts       # Step pipeline (mobile)
     ├── account.ts        # Account creation (web GraphQL / mobile REST)
     ├── profile.ts        # Web profile setup + availability
     ├── mobile.ts         # Mobile-specific enrollment flow
@@ -144,14 +226,13 @@ src/
     └── photo.ts          # Programmatic PNG generation + upload
 ```
 
-### Adding a new vertical
+### Adding a new web enrollment step
 
-1. Create `src/payloads/<vertical>.ts` with the same export shape as `childcare.ts`
-2. Add the vertical name to the `Vertical` type in `types.ts`
-3. Add a `case` to `loadPayloads()` in `index.ts`
+1. Add the step name to `WEB_STEPS` in `types.ts`
+2. Add a new block in `runWebEnrollmentFlow()` in `src/steps/web-flow.ts` with the URL wait pattern and page interaction logic
 
-### Adding a new step
+### Adding a new mobile step
 
-1. Add the step name to `WEB_STEPS` and/or `MOBILE_STEPS` in `types.ts`
+1. Add the step name to `MOBILE_STEPS` in `types.ts`
 2. Create a runner function in the appropriate `steps/` file
-3. Register it in the pipeline array in `registry.ts`
+3. Register it in the pipeline array in `src/steps/registry.ts`

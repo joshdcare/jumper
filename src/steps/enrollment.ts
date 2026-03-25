@@ -107,8 +107,8 @@ export async function createSitterBgCheck(
       lastFourDigits: '1111',
       firstSixDigits: '411111',
       usingVantivEprotectIframe: 'true',
-      expirationMonth: '10',
-      expirationYear: '30',
+      expirationMonth: '09',
+      expirationYear: '32',
       cardType: 'Visa',
     }
   );

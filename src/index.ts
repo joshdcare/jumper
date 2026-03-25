@@ -38,9 +38,9 @@ ${[...WEB_STEPS].map(s => `    ${s}`).join('\n')}
 ${[...MOBILE_STEPS].map(s => `    ${s}`).join('\n')}
 
 Examples:
+  $ ./factory --step at-location --platform web
   $ ./factory --step at-availability --platform mobile
   $ ./factory --step fully-enrolled --platform mobile --tier basic
-  $ ./factory --step at-disclosure --platform web
 `);
 
   program.parse(argv, { from: 'user' });
@@ -70,16 +70,13 @@ async function loadPayloads(vertical: Vertical) {
   }
 }
 
-async function run(opts: CliOptions): Promise<void> {
-  const envConfig = ENV_CONFIGS[opts.env];
-  if (!envConfig) {
-    throw new Error(`Unknown environment: ${opts.env}`);
-  }
+async function runWebFlow(opts: CliOptions, envConfig: typeof ENV_CONFIGS[string]): Promise<void> {
+  const { runWebEnrollmentFlow } = await import('./steps/web-flow.js');
+  console.log(`\nStarting web enrollment → ${opts.step}\n`);
+  await runWebEnrollmentFlow(opts.step, opts.tier as Tier, envConfig);
+}
 
-  if (!envConfig.apiKey) {
-    throw new Error('CZEN_API_KEY environment variable is required');
-  }
-
+async function runMobileFlow(opts: CliOptions, envConfig: typeof ENV_CONFIGS[string]): Promise<void> {
   const client = new ApiClient(envConfig.baseUrl, envConfig.apiKey);
   const payloads = await loadPayloads(opts.vertical);
 
@@ -93,8 +90,7 @@ async function run(opts: CliOptions): Promise<void> {
   };
 
   const steps = getStepsUpTo(opts.step, opts.platform);
-
-  console.log(`\nCreating provider at step: ${opts.step} (${opts.platform})\n`);
+  console.log(`\nCreating provider at step: ${opts.step} (mobile)\n`);
 
   for (const step of steps) {
     if (step.name !== 'account-created' && !ctx.accessToken) {
@@ -118,21 +114,39 @@ async function run(opts: CliOptions): Promise<void> {
     }
   }
 
-  console.log(`\n✓ Provider created at step: ${opts.step} (${opts.platform})\n`);
+  console.log(`\n✓ Provider created at step: ${opts.step} (mobile)\n`);
   console.log(`  Email:      ${ctx.email}`);
   console.log(`  Password:   ${ctx.password}`);
   console.log(`  MemberId:   ${ctx.memberId}`);
   console.log(`  UUID:       ${ctx.uuid ?? '(set MYSQL_DB_PASS_DEV to retrieve)'}`);
   console.log(`  Vertical:   ${ctx.vertical}`);
 
-  const stepsWithAvailability: Step[] = ['profile-complete', 'pre-upgrade', 'upgraded', 'at-disclosure', 'fully-enrolled'];
-  if (stepsWithAvailability.includes(opts.step)) {
+  const mobileStepsWithAvailability: Step[] = [
+    'at-availability', 'profile-complete', 'upgraded', 'at-disclosure', 'fully-enrolled',
+  ];
+  if (mobileStepsWithAvailability.includes(opts.step)) {
     console.log('');
     console.log('  ℹ Availability: Full-time preference is set. Detailed day/time schedule');
     console.log('    is not visible in "Your Services & Availability" on first login.');
     console.log('    Tap "Edit" > save once in the app to populate the calendar view.');
   }
   console.log('');
+}
+
+async function run(opts: CliOptions): Promise<void> {
+  const envConfig = ENV_CONFIGS[opts.env];
+  if (!envConfig) {
+    throw new Error(`Unknown environment: ${opts.env}`);
+  }
+
+  if (opts.platform === 'web') {
+    await runWebFlow(opts, envConfig);
+  } else {
+    if (!envConfig.apiKey) {
+      throw new Error('CZEN_API_KEY environment variable is required');
+    }
+    await runMobileFlow(opts, envConfig);
+  }
 }
 
 const isMainModule = process.argv[1]?.includes('index');

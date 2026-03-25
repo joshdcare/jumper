@@ -16,7 +16,7 @@ export async function getVantivPPRID(): Promise<string> {
     orderId: '12345',
     id: '12345',
     accountNumber: '4111111111111111',
-    cvv: '111',
+    cvv: '123',
   });
   const res = await fetch(VANTIV_EPROTECT_URL, {
     method: 'POST',
@@ -32,7 +32,7 @@ export async function getVantivPPRID(): Promise<string> {
 
 const SCREENING_PRICING: Record<string, { planId: string; schemeId: string }> = {
   basic: { planId: 'PRO_PB_FEB2512001', schemeId: 'PRO_PB_FEB2512' },
-  premium: { planId: 'PRO_FEAT_FEB2512001', schemeId: 'PRO_PB_FEB2512' },
+  premium: { planId: 'PRO_FEAT_FEB2512001', schemeId: 'PRO_FEAT_FEB2512' },
 };
 
 async function doVantivUpgrade(
@@ -49,8 +49,8 @@ async function doVantivUpgrade(
     {
       firstNameOnCard: 'Martina',
       lastNameOnCard: 'Goodram',
-      expirationMonth: '10',
-      expirationYear: '30',
+      expirationMonth: '09',
+      expirationYear: '32',
       billingZIP: '72204',
       dateOfBirth: '1995-07-26T00:00',
       cardType: 'Visa',
@@ -120,9 +120,9 @@ export async function upgradeSubscription(
     type: 'card',
     card: {
       number: '4111111111111111',
-      exp_month: 10,
-      exp_year: 2030,
-      cvc: '134',
+      exp_month: 9,
+      exp_year: 2032,
+      cvc: '123',
     },
     billing_details: {
       name: 'Martina Goodram',

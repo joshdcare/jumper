@@ -1,12 +1,19 @@
 export type Platform = 'web' | 'mobile';
 
 export const WEB_STEPS = [
-  'account-created',
-  'profile-complete',
-  'pre-upgrade',
-  'upgraded',
-  'at-disclosure',
-  'fully-enrolled',
+  'at-get-started',
+  'at-soft-intro-combined',
+  'at-vertical-selection',
+  'at-location',
+  'at-preferences',
+  'at-family-count',
+  'at-account-creation',
+  'at-family-connection',
+  'at-safety-screening',
+  'at-subscriptions',
+  'at-basic-payment',
+  'at-premium-payment',
+  'at-app-download',
 ] as const;
 
 export const MOBILE_STEPS = [
