@@ -8,10 +8,11 @@ import { getAccessToken } from './api/auth.js';
 import { getStepsUpTo } from './steps/registry.js';
 import { VERTICAL_REGISTRY } from './verticals.js';
 
-export function parseArgs(argv: string[]): CliOptions {
-  const program = new Command();
-  program.exitOverride();
-  program
+const BANNER = 'QA Provider Factory — create test providers at enrollment checkpoints.';
+
+function createEnrollmentCommand(): Command {
+  const cmd = new Command('run');
+  cmd
     .requiredOption(
       '--step <step>',
       `Enrollment checkpoint (see steps below)`,
@@ -55,9 +56,35 @@ Examples:
   $ ./factory --step at-availability --platform mobile
   $ ./factory --step fully-enrolled --platform mobile --tier basic
 `);
+  return cmd;
+}
 
+function createRootProgram(): Command {
+  const program = new Command();
+  program.name('jumper');
+  program
+    .command('start')
+    .description('Launch interactive TUI for guided enrollment')
+    .action(async () => {
+      const { render } = await import('ink');
+      const React = await import('react');
+      const { App } = await import('./tui/app.js');
+      render(React.createElement(App));
+    });
+  program.addCommand(createEnrollmentCommand(), { isDefault: true, hidden: true });
+  return program;
+}
+
+export function parseArgs(argv: string[]): CliOptions {
+  const program = new Command();
+  program.exitOverride();
+  program.addCommand(createEnrollmentCommand(), { isDefault: true, hidden: true });
   program.parse(argv, { from: 'user' });
-  const opts = program.opts() as CliOptions;
+  const enroll = program.commands.find((c) => c.name() === 'run');
+  if (!enroll) {
+    throw new Error('internal: enrollment command missing');
+  }
+  const opts = enroll.opts() as CliOptions;
 
   const validPlatforms = ['web', 'mobile'];
   if (!validPlatforms.includes(opts.platform)) {
@@ -65,7 +92,7 @@ Examples:
   }
 
   const validSteps = opts.platform === 'mobile' ? MOBILE_STEPS : WEB_STEPS;
-  if (!validSteps.includes(opts.step as any)) {
+  if (!(validSteps as readonly Step[]).includes(opts.step)) {
     throw new Error(
       `Step "${opts.step}" is not valid for ${opts.platform} platform. Valid steps: ${[...validSteps].join(', ')}`
     );
@@ -173,19 +200,41 @@ async function run(opts: CliOptions): Promise<void> {
   }
 }
 
-const isMainModule = process.argv[1]?.includes('index');
+async function runInteractiveCli(argv: string[]): Promise<void> {
+  const program = createRootProgram();
+  program.exitOverride();
+  await program.parseAsync(argv, { from: 'user' });
+}
+
+const scriptPath = process.argv[1] ?? '';
+const isMainModule = scriptPath.includes('index') || scriptPath.endsWith('jumper');
 if (isMainModule) {
-  try {
-    const opts = parseArgs(process.argv.slice(2));
-    run(opts).catch((err) => {
+  const argv = process.argv.slice(2);
+  if (process.argv.length <= 2) {
+    console.log(BANNER);
+    console.log('  Run `jumper start` for guided mode.\n');
+  }
+  if (argv[0] === 'start') {
+    runInteractiveCli(argv).catch((err) => {
+      if (err instanceof CommanderError) {
+        process.exit(err.exitCode);
+      }
       console.error('Fatal error:', (err as Error).message);
       process.exit(1);
     });
-  } catch (err) {
-    if (err instanceof CommanderError) {
-      process.exit(err.exitCode);
+  } else {
+    try {
+      const opts = parseArgs(argv);
+      run(opts).catch((err) => {
+        console.error('Fatal error:', (err as Error).message);
+        process.exit(1);
+      });
+    } catch (err) {
+      if (err instanceof CommanderError) {
+        process.exit(err.exitCode);
+      }
+      console.error('Fatal error:', (err as Error).message);
+      process.exit(1);
     }
-    console.error('Fatal error:', (err as Error).message);
-    process.exit(1);
   }
 }
