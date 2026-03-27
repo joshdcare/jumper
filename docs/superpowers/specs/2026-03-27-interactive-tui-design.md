@@ -1,7 +1,7 @@
 # Interactive TUI for Jumper
 
 **Date:** 2026-03-27
-**Status:** Draft
+**Status:** Ready for planning
 
 ## Purpose
 
@@ -91,7 +91,7 @@ Log filtering via `f` key toggles visibility of each event category. Static asse
 |-----|--------|
 | `↑/↓` | Navigate step list / scroll logs |
 | `enter` | Confirm selection / continue to next step |
-| `esc` | Go back (wizard) / pause (execution) |
+| `esc` | Go back (wizard) / cancel current step and drop to step-through mode (run-all) |
 | `d` | Toggle detail level (summary vs full payloads) |
 | `f` | Toggle log filters |
 | `t` | Show results table (batch mode) |
@@ -130,7 +130,7 @@ Pre-filled with sensible defaults. The user only changes what they need:
 
 Summary table of all selections. Three choices:
 - **Run all steps automatically** — executes straight through, pauses only on error
-- **Step through one at a time** — pauses after each step completes
+- **Step through one at a time** — pauses after each enrollment step within a single provider completes. In batch mode (count > 1 or multiple verticals), also pauses between providers so the user can review the completed result before the next one starts.
 - **Go back and edit** — returns to the wizard
 
 ### Environment Variable Validation
@@ -138,7 +138,7 @@ Summary table of all selections. Three choices:
 Before reaching the confirm screen, the TUI checks for required env vars based on the selected configuration:
 - `CZEN_API_KEY` — required for all mobile flows
 - `MYSQL_DB_PASS_DEV` — required for mobile `fully-enrolled`; optional otherwise
-- `STRIPE_KEY` — required for web payment steps
+- `STRIPE_KEY` — required for web payment steps (`at-basic-payment`, `at-premium-payment`, `at-app-download`)
 
 If a var is missing, the confirm screen displays a warning with the var name and where to find it (team lead or QA vault), rather than letting the run fail midway.
 
@@ -200,7 +200,7 @@ The TUI imports from:
 - `src/verticals.ts` — vertical config
 - `src/payloads/*.ts` — request payloads
 
-No changes to these modules' interfaces. The emitter parameter is optional and additive.
+The `StepDefinition` runner signature in `registry.ts` gains an optional `emitter` parameter. The `ApiClient` class gains an optional `emitter` that it uses to emit `network-request` and `network-response` events around every HTTP call, providing network-level visibility for mobile flows. Payload modules, vertical configs, and type exports are unchanged. All additions are optional parameters with no breaking changes to existing callers.
 
 ## Error Handling
 
