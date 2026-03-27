@@ -10,7 +10,7 @@ DIM='\033[2m'
 RESET='\033[0m'
 
 step=0
-total_steps=5
+total_steps=6
 
 progress() {
   step=$((step + 1))
@@ -32,8 +32,8 @@ fail() {
 }
 
 echo ""
-echo -e "${BOLD}qa-provider-factory setup${RESET}"
-echo -e "${DIM}────────────────────────${RESET}"
+echo -e "${BOLD}Jumper setup${RESET}"
+echo -e "${DIM}────────────${RESET}"
 
 # ── 1. Check Node.js ──────────────────────────────────────────────
 
@@ -127,17 +127,30 @@ else
   fail "TypeScript build failed. Run 'npm run build' to see errors."
 fi
 
+# ── 6. Link jumper command ─────────────────────────────────────────
+
+progress "Linking jumper command"
+
+if npm link --force 2>/dev/null; then
+  success "jumper command available globally"
+else
+  warn "npm link failed — you can still run via: npx tsx src/index.ts start"
+fi
+
 # ── Done ──────────────────────────────────────────────────────────
 
 echo ""
 echo -e "${GREEN}${BOLD}✓ Setup complete!${RESET}"
 echo ""
 echo -e "  ${BOLD}Quick start:${RESET}"
-echo -e "    ${DIM}# Web — stop at the location page${RESET}"
-echo -e "    npm run create -- --step at-location --platform web"
+echo -e "    ${DIM}# Interactive mode (guided wizard)${RESET}"
+echo -e "    jumper start"
 echo ""
-echo -e "    ${DIM}# Mobile — fully enrolled Premium user${RESET}"
-echo -e "    npm run create -- --step fully-enrolled --platform mobile"
+echo -e "    ${DIM}# CLI — web provider at the location page${RESET}"
+echo -e "    jumper --step at-location --platform web"
+echo ""
+echo -e "    ${DIM}# CLI — fully enrolled mobile Premium user${RESET}"
+echo -e "    jumper --step fully-enrolled --platform mobile"
 echo ""
 echo -e "  ${BOLD}Reminders:${RESET}"
 echo -e "    • Connect to the ${BOLD}VPN${RESET} before running — SPI endpoints and the dev DB require it."
