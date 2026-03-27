@@ -645,7 +645,7 @@ emitter?.stepComplete('at-get-started');
 if (targetStep === 'at-get-started') return await stop('at-get-started');
 ```
 
-Repeat this pattern for every `at-*` checkpoint in the flow. Import `STEP_DESCRIPTIONS` from `./tui/step-descriptions.js`.
+Repeat this pattern for every `at-*` checkpoint in the flow. Import `STEP_DESCRIPTIONS` from `../tui/step-descriptions.js` (web-flow.ts is in `src/steps/`, so the relative path goes up one level).
 
 This is critical — without these emissions, the TUI's step list panel won't track progress during web runs.
 
@@ -685,11 +685,11 @@ npx tsc --noEmit
 
 Expected: No errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/steps/web-flow.ts
-git commit -m "feat: add network listeners and emitter to web enrollment flow"
+git commit -m "feat: add network listeners, step lifecycle, and step-through to web flow"
 ```
 
 ---
@@ -1524,7 +1524,7 @@ git commit -m "feat: add batch mode results table and progress tracking"
 
 ---
 
-### Task 11: Root app component (updated with batch + web step-through)
+### Task 11: Root app component (with batch tracking + web step-through)
 
 **Files:**
 - Create: `src/tui/app.tsx`
@@ -1575,9 +1575,12 @@ export function App(): React.ReactElement {
     continueRef.current?.();
   }, []);
 
-  const handleRetry = useCallback(() => {
-    // Retry logic — re-run current step
-    continueRef.current?.();
+  const retryFnRef = useRef<(() => Promise<void>) | null>(null);
+
+  const handleRetry = useCallback(async () => {
+    if (retryFnRef.current) {
+      await retryFnRef.current();
+    }
   }, []);
 
   const handleQuit = useCallback(() => {
@@ -1612,13 +1615,30 @@ async function runExecution(
   emitter: RunEmitter,
   continueRef: React.MutableRefObject<(() => void) | null>,
 ): Promise<void> {
-  for (const vertical of config.verticals) {
-    for (let i = 0; i < config.count; i++) {
-      if (config.platform === 'web') {
-        await runWebExecution(config, vertical, envConfig, emitter, continueRef);
-      } else {
-        await runMobileExecution(config, vertical, envConfig, emitter, continueRef);
-      }
+  const jobs: Vertical[] = [];
+  for (const v of config.verticals) {
+    for (let i = 0; i < config.count; i++) jobs.push(v);
+  }
+
+  for (let i = 0; i < jobs.length; i++) {
+    const vertical = jobs[i];
+    // Emit batch progress for the UI
+    emitter.info(`Creating provider ${i + 1}/${jobs.length} (${vertical})`);
+    emitter.contextUpdate('_batchTotal', String(jobs.length));
+    emitter.contextUpdate('_batchCurrent', String(i + 1));
+
+    if (config.platform === 'web') {
+      await runWebExecution(config, vertical, envConfig, emitter, continueRef);
+    } else {
+      await runMobileExecution(config, vertical, envConfig, emitter, continueRef);
+    }
+
+    // Emit a batch-result event so execution view can track completed providers
+    emitter.info(`Provider ${i + 1}/${jobs.length} complete`);
+
+    // In step-through batch mode, pause between providers
+    if (config.executionMode === 'step-through' && i < jobs.length - 1) {
+      await new Promise<void>(resolve => { continueRef.current = resolve; });
     }
   }
 }
@@ -1719,7 +1739,7 @@ git commit -m "feat: add root TUI app with wizard-to-execution state machine"
 
 ---
 
-### Task 11: Wire up the `interactive` subcommand
+### Task 12: Wire up the `interactive` subcommand
 
 **Files:**
 - Modify: `src/index.ts`
@@ -1776,7 +1796,7 @@ git commit -m "feat: add 'jumper interactive' subcommand to launch TUI"
 
 ---
 
-### Task 12: End-to-end smoke test
+### Task 13: End-to-end smoke test
 
 **Files:**
 - Verify all components work together
