@@ -177,9 +177,7 @@ async function run(opts: CliOptions): Promise<void> {
   }
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}` ||
-  process.argv[1]?.includes('index') ||
-  process.argv[1]?.endsWith('/jumper');
+const isMainModule = process.argv[1]?.includes('index');
 if (isMainModule) {
   try {
     const opts = parseArgs(process.argv.slice(2));
