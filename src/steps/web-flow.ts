@@ -106,23 +106,34 @@ export async function runWebEnrollmentFlow(
     /* ── at-location → at-preferences ──────────────────────── */
     await page.getByLabel(/zip/i).first().fill('72204');
     await clickEnabledButton(page, /next/i);
-    await page.waitForURL('**/enrollment/provider/mv/preferences**');
+    await page.waitForURL(
+      url => /\/(preferences|hourly-rate)/.test(url.pathname),
+      { timeout: 15_000 },
+    );
     await waitForPageReady(page);
     console.log('  ✓ at-preferences');
     if (targetStep === 'at-preferences') return await stop('at-preferences');
 
-    /* ── at-preferences → at-family-count ──────────────────── */
+    /* ── at-preferences → at-family-count (or skip to account) */
     await fillPreferences(page);
     await clickEnabledButton(page, /next/i);
-    await page.waitForURL('**/enrollment/provider/mv/family-count**');
+    await page.waitForURL(
+      url => /\/(family-count|account)/.test(url.pathname),
+      { timeout: 15_000 },
+    );
     await waitForPageReady(page);
-    console.log('  ✓ at-family-count');
-    if (targetStep === 'at-family-count') return await stop('at-family-count');
 
-    /* ── at-family-count → at-account-creation ─────────────── */
-    await clickEnabledButton(page, /next/i);
-    await page.waitForURL('**/enrollment/provider/mv/account/combined**');
-    await waitForPageReady(page);
+    if (page.url().includes('/family-count')) {
+      console.log('  ✓ at-family-count');
+      if (targetStep === 'at-family-count') return await stop('at-family-count');
+
+      await clickEnabledButton(page, /next/i);
+      await page.waitForURL('**/enrollment/provider/mv/account/combined**');
+      await waitForPageReady(page);
+    } else {
+      console.log('  ✓ at-family-count (skipped — not applicable for this vertical)');
+    }
+
     console.log('  ✓ at-account-creation');
     if (targetStep === 'at-account-creation') return await stop('at-account-creation');
 
