@@ -10,7 +10,7 @@ DIM='\033[2m'
 RESET='\033[0m'
 
 step=0
-total_steps=5
+total_steps=6
 
 progress() {
   step=$((step + 1))
@@ -127,6 +127,16 @@ else
   fail "TypeScript build failed. Run 'npm run build' to see errors."
 fi
 
+# ── 6. Link CLI globally ─────────────────────────────────────────
+
+progress "Linking jumper command globally"
+
+if npm link --loglevel=error 2>&1; then
+  success "'jumper' is now available globally"
+else
+  warn "npm link failed — you can still run ./jumper from the project directory."
+fi
+
 # ── Done ──────────────────────────────────────────────────────────
 
 echo ""
@@ -134,13 +144,13 @@ echo -e "${GREEN}${BOLD}✓ Setup complete!${RESET}"
 echo ""
 echo -e "  ${BOLD}Quick start:${RESET}"
 echo -e "    ${DIM}# Web — stop at the location page${RESET}"
-echo -e "    ./jumper at-location"
+echo -e "    jumper at-location"
 echo ""
 echo -e "    ${DIM}# Mobile — fully enrolled Premium user${RESET}"
-echo -e "    ./jumper fully-enrolled -m"
+echo -e "    jumper fully-enrolled -m"
 echo ""
 echo -e "  ${BOLD}Reminders:${RESET}"
 echo -e "    • Connect to the ${BOLD}VPN${RESET} before running — SPI endpoints and the dev DB require it."
+echo -e "    • Run ${CYAN}jumper --help${RESET} to see all steps and options."
 echo -e "    • Run ${CYAN}npm test${RESET} to verify the test suite passes."
-echo -e "    • See ${CYAN}README.md${RESET} for all available steps and options."
 echo ""

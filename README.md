@@ -17,7 +17,7 @@ cd jumper
 ./setup.sh
 ```
 
-The setup script handles everything: checks your Node.js version, installs npm dependencies, installs Playwright Chromium, walks you through configuring `.env`, and builds the project.
+The setup script handles everything: checks your Node.js version, installs npm dependencies, installs Playwright Chromium, walks you through configuring `.env`, builds the project, and links the `jumper` command globally so you can run it from anywhere.
 
 To set up manually instead, see the steps below.
 
@@ -69,7 +69,7 @@ You must be connected to the **VPN** for SPI endpoints and the dev database to b
 ## Usage
 
 ```bash
-./jumper <step> [-m] [-t basic|premium] [-v childcare] [-e dev] [--no-auto-close]
+jumper <step> [-m] [-t basic|premium] [-v childcare] [-e dev] [--no-auto-close]
 ```
 
 | Flag | Short | Default | Description |
@@ -134,28 +134,28 @@ Mobile uses API calls to build account state at each checkpoint. Steps are cumul
 
 ```bash
 # Web — stop at the location page (Child Care, the default)
-./jumper at-location
+jumper at-location
 
 # Web — Senior Care provider at account creation
-./jumper at-account-creation -v seniorcare
+jumper at-account-creation -v seniorcare
 
 # Web — stop at basic checkout
-./jumper at-basic-payment
+jumper at-basic-payment
 
 # Web — Pet Care provider through premium checkout
-./jumper at-premium-payment -v petcare
+jumper at-premium-payment -v petcare
 
 # Web — complete enrollment through app download (basic tier)
-./jumper at-app-download -t basic
+jumper at-app-download -t basic
 
 # Mobile — Housekeeping provider stopped at the availability screen
-./jumper at-availability -m -v housekeeping
+jumper at-availability -m -v housekeeping
 
 # Mobile — fully enrolled Basic user
-./jumper fully-enrolled -m -t basic
+jumper fully-enrolled -m -t basic
 
 # Mobile — fully enrolled Tutoring Premium user
-./jumper fully-enrolled -m -v tutoring
+jumper fully-enrolled -m -v tutoring
 ```
 
 ## Output
