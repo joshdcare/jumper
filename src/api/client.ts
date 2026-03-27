@@ -1,15 +1,35 @@
+import type { RunEmitter } from '../tui/emitter.js';
+
 export class ApiClient {
   readonly baseUrl: string;
   readonly apiKey: string;
   private accessToken?: string;
+  private emitter?: RunEmitter;
 
   constructor(baseUrl: string, apiKey: string) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
   }
 
+  setEmitter(emitter: RunEmitter): void {
+    this.emitter = emitter;
+  }
+
   setAccessToken(token: string): void {
     this.accessToken = token;
+  }
+
+  private async trackedFetch(url: string, init: RequestInit): Promise<Response> {
+    const method = init.method ?? 'GET';
+    const shortUrl = url.replace(this.baseUrl, '');
+    this.emitter?.networkRequest(method, shortUrl, typeof init.body === 'string' ? init.body : undefined);
+    const start = Date.now();
+    const res = await fetch(url, init);
+    const duration = Date.now() - start;
+    const cloned = res.clone();
+    const text = await cloned.text().catch(() => '');
+    this.emitter?.networkResponse(res.status, shortUrl, duration, text.slice(0, 500));
+    return res;
   }
 
   async graphql<T>(
@@ -25,7 +45,7 @@ export class ApiClient {
       headers['Authorization'] = this.accessToken;
     }
 
-    const res = await fetch(`${this.baseUrl}/api/graphql`, {
+    const res = await this.trackedFetch(`${this.baseUrl}/api/graphql`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ query, variables }),
@@ -64,7 +84,7 @@ export class ApiClient {
       bodyStr = JSON.stringify(body);
     }
 
-    const res = await fetch(url, { method: 'POST', headers, body: bodyStr });
+    const res = await this.trackedFetch(url, { method: 'POST', headers, body: bodyStr });
     const text = await res.text();
     try { return JSON.parse(text); } catch { return text; }
   }
@@ -90,7 +110,7 @@ export class ApiClient {
       bodyStr = JSON.stringify(body);
     }
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.trackedFetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers,
       body: bodyStr,
@@ -116,7 +136,7 @@ export class ApiClient {
       ...extraHeaders,
     };
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.trackedFetch(`${this.baseUrl}${path}`, {
       method: 'GET',
       headers,
     });
@@ -145,7 +165,7 @@ export class ApiClient {
       'X-Care.com-AuthToken': authToken,
     };
 
-    const res = await fetch(url, { method: 'POST', headers, body: formData });
+    const res = await this.trackedFetch(url, { method: 'POST', headers, body: formData });
     const text = await res.text();
     try { return JSON.parse(text); } catch { return text; }
   }
@@ -165,7 +185,7 @@ export class ApiClient {
       'X-Care.com-AuthToken': authToken,
     };
 
-    const res = await fetch(url, { method: 'GET', headers });
+    const res = await this.trackedFetch(url, { method: 'GET', headers });
     const text = await res.text();
     try { return JSON.parse(text); } catch { return text; }
   }
