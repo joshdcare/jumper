@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import type { RunEmitter, RunEvent } from './emitter.js';
+import type { RunEvent } from './emitter.js';
 import { COLORS } from './theme.js';
 
-interface LogEntry {
+export interface LogEntry {
   event: RunEvent;
   timestamp: number;
 }
@@ -16,7 +16,7 @@ interface LogFilters {
 }
 
 interface LogPanelProps {
-  emitter: RunEmitter;
+  entries: LogEntry[];
   detailMode: boolean;
 }
 
@@ -36,21 +36,12 @@ function isSystemEvent(e: RunEvent): boolean {
   return e.type === 'info' || e.type === 'auth' || e.type === 'db-query';
 }
 
-export function LogPanel({ emitter, detailMode }: LogPanelProps): React.ReactElement {
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+export function LogPanel({ entries, detailMode }: LogPanelProps): React.ReactElement {
   const [filters, setFilters] = useState<LogFilters>({
     browser: true, network: true, navigation: true, system: true,
   });
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-
-  useEffect(() => {
-    const handler = (event: RunEvent) => {
-      setEntries(prev => [...prev, { event, timestamp: Date.now() }]);
-    };
-    emitter.on('event', handler);
-    return () => { emitter.off('event', handler); };
-  }, [emitter]);
 
   useInput((input, key) => {
     if (input === 'f') setShowFilterMenu(prev => !prev);
@@ -91,6 +82,9 @@ export function LogPanel({ emitter, detailMode }: LogPanelProps): React.ReactEle
           </Text>
         </Box>
       )}
+      {visible.length === 0 && (
+        <Text color={COLORS.dimText}>No logs yet for this step</Text>
+      )}
       {visible.map((entry, i) => (
         <LogLine key={i} entry={entry} detailMode={detailMode} />
       ))}
@@ -125,7 +119,7 @@ function LogLine({ entry, detailMode }: { entry: LogEntry; detailMode: boolean }
         </Box>
       );
     case 'step-start':
-      return <Text color={COLORS.stepRunning} bold>{event.step}</Text>;
+      return <Text color={COLORS.stepRunning} bold>▸ {event.step}</Text>;
     case 'step-complete':
       return <Text color={COLORS.stepComplete}>✓ {event.step} complete</Text>;
     case 'step-error':
@@ -138,5 +132,7 @@ function LogLine({ entry, detailMode }: { entry: LogEntry; detailMode: boolean }
       return <Text color={COLORS.systemEvent}>{event.message}</Text>;
     case 'context-update':
       return <Text color={COLORS.dimText}>{event.key}: {event.value}</Text>;
+    case 'run-complete':
+      return <Text color={COLORS.stepComplete} bold>✅ Run complete</Text>;
   }
 }

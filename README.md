@@ -1,6 +1,6 @@
-# QA Provider Factory
+# Jumper
 
-A CLI tool for the PEXP team that navigates provider enrollment to specific checkpoints. Instead of manually clicking through 15+ screens to reach a particular point in the flow, run one command and get there in seconds.
+A CLI + TUI tool for the PEXP team that navigates provider enrollment to specific checkpoints. Instead of manually clicking through 15+ screens to reach a particular point in the flow, run one command and get there in seconds.
 
 Supports **five verticals**: Child Care, Senior Care, Pet Care, Housekeeping, and Tutoring.
 
@@ -10,8 +10,8 @@ Supports **five verticals**: Child Care, Senior Care, Pet Care, Housekeeping, an
 ## Setup
 
 ```bash
-git clone <repo-url>
-cd qa-provider-factory
+git clone git@github.com:joshdcare/jumper.git
+cd jumper
 ./setup.sh
 ```
 
@@ -44,11 +44,14 @@ STRIPE_KEY=<Stripe test key>
 MYSQL_DB_PASS_DEV=<MySQL read-only password>
 ```
 
-### 4. Build
+### 4. Build and link
 
 ```bash
 npm run build
+npm link
 ```
+
+After linking, the `jumper` command is available globally in your terminal.
 
 </details>
 
@@ -64,10 +67,105 @@ npm run build
 
 You must be connected to the **VPN** for SPI endpoints and the dev database to be reachable.
 
-## Usage
+---
+
+## Interactive Mode (TUI)
+
+The easiest way to use Jumper. A guided wizard walks you through configuration, then runs or steps through each enrollment stage with full visibility into what's happening.
 
 ```bash
-npm run create --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical childcare] [--env dev] [--no-auto-close]
+jumper start
+```
+
+### Wizard
+
+The wizard walks through six screens:
+
+1. **Platform** — Web or Mobile
+2. **Vertical** — Child Care, Senior Care, Pet Care, Housekeeping, or Tutoring
+3. **Step** — The enrollment checkpoint to stop at (platform-specific list with descriptions)
+4. **Tier** — Basic or Premium
+5. **Options** — Count (how many providers to create) and execution mode (Run All or Step Through)
+6. **Confirm** — Review your selections and launch
+
+Environment variable warnings are shown if your `.env` is missing keys required for the selected flow.
+
+### Execution screen
+
+Once the wizard completes, the execution screen takes over:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ ██ JUMPER                                  web · childcare   │
+├────────────┬─────────────────────────────────────────────────┤
+│ STEPS      │ at-location                                     │
+│ ✓ get-str  │ Enter your ZIP code                             │
+│ ✓ soft-int │                                                 │
+│ ▸ location │ ▸ Logs: at-location (12) — press l to expand    │
+│ ○ prefs    │                                                 │
+│            │                                                 │
+│ CONTEXT    │                                                 │
+│ email: ... │                                                 │
+├────────────┴─────────────────────────────────────────────────┤
+│ ● dev     tab: browse steps · l: show logs · q: quit        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Left panel** — Step list with status icons (`○` pending, `▸` running, `✓` complete, `✗` error) and per-step log counts. Below the steps, a context section shows extracted values (email, memberId, UUID) as they become available.
+
+**Right panel** — Current step header with description, recent activity lines, and a collapsible log drawer.
+
+**Bottom bar** — Environment indicator, keybindings, step counter, and elapsed time.
+
+### Keyboard shortcuts
+
+| Key | During execution | After completion |
+|-----|-----------------|------------------|
+| `l` | Toggle log drawer open/closed | Toggle log drawer |
+| `d` | Toggle detail mode (verbose log entries) | Toggle detail mode |
+| `tab` / `shift+tab` | Browse logs by step | Browse logs by step |
+| `a` | Show all logs (across all steps) | Show all logs |
+| `enter` | Continue (step-through mode) | Confirm menu selection |
+| `↑` / `↓` | — | Navigate completion menu |
+| `q` | Quit | Quit |
+| `esc` | Close log drawer / pause (run-all) | Close log drawer |
+| `r` | Retry (after error) | — |
+
+### Log drawer
+
+Press `l` to expand the log drawer. Logs are grouped by step — use `tab`/`shift+tab` to switch between steps, or `a` to see all logs combined. Each step shows its log count in the step list.
+
+Logs include:
+- **Network requests/responses** — method, URL, status, duration
+- **Browser actions** (web) — fields filled, buttons clicked, checkboxes toggled, page navigations
+- **API details** (mobile) — request/response payloads
+- **Step lifecycle** — start, complete, error events with context
+
+### Execution modes
+
+- **Run All** — Executes every step automatically from start to finish. Press `esc` to pause.
+- **Step Through** — Pauses after each step completes. Press `enter` to advance to the next step.
+
+### After completion
+
+When the run finishes, a completion screen shows:
+- Step results summary
+- Provider details (email, password, memberId, UUID, vertical)
+- A **What next?** menu:
+  - **Create another (same settings)** — re-run with the same wizard configuration
+  - **New configuration** — go back to the wizard
+  - **Quit** — exit
+
+Logs remain accessible on the completion screen via `l`, `tab`, and `a`.
+
+---
+
+## CLI Mode
+
+For scripting or when you already know exactly what you want:
+
+```bash
+jumper --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical childcare] [--env dev] [--no-auto-close]
 ```
 
 | Flag | Default | Description |
@@ -79,9 +177,31 @@ npm run create --step <step> [--platform web|mobile] [--tier basic|premium] [--v
 | `--env` | `dev` | Target environment |
 | `--no-auto-close` | *(off)* | Keep the browser open after logging credentials (web only) |
 
-## Enrollment Steps
+### Examples
 
-The tool runs through enrollment up to and including the step you specify.
+```bash
+# Web — stop at the location page (Child Care, the default)
+jumper --step at-location --platform web
+
+# Web — Senior Care provider at account creation
+jumper --step at-account-creation --platform web --vertical seniorcare
+
+# Web — Pet Care provider through premium checkout
+jumper --step at-premium-payment --platform web --vertical petcare
+
+# Mobile — Housekeeping provider stopped at the availability screen
+jumper --step at-availability --platform mobile --vertical housekeeping
+
+# Mobile — fully enrolled Basic user
+jumper --step fully-enrolled --platform mobile --tier basic
+
+# Mobile — fully enrolled Tutoring Premium user
+jumper --step fully-enrolled --platform mobile --tier premium --vertical tutoring
+```
+
+---
+
+## Enrollment Steps
 
 ### Web (`--platform web`)
 
@@ -127,107 +247,6 @@ Mobile uses API calls to build account state at each checkpoint. Steps are cumul
 | `upgraded` | Vantiv payment + Basic/Premium subscription | Past upgrade |
 | `at-disclosure` | Reaches disclosure screen | Disclosure screen |
 | `fully-enrolled` | Disclosure, SSN trace, eligibility, BGC, Sterling callback | Fully enrolled |
-
-## Examples
-
-```bash
-# Web — stop at the location page (Child Care, the default)
-npm run create --step at-location --platform web
-
-# Web — Senior Care provider at account creation
-npm run create --step at-account-creation --platform web --vertical seniorcare
-
-# Web — stop at basic checkout
-npm run create --step at-basic-payment --platform web
-
-# Web — Pet Care provider through premium checkout
-npm run create --step at-premium-payment --platform web --vertical petcare
-
-# Web — complete enrollment through app download (basic tier)
-npm run create --step at-app-download --platform web --tier basic
-
-# Mobile — Housekeeping provider stopped at the availability screen
-npm run create --step at-availability --platform mobile --vertical housekeeping
-
-# Mobile — fully enrolled Basic user
-npm run create --step fully-enrolled --platform mobile --tier basic
-
-# Mobile — fully enrolled Tutoring Premium user
-npm run create --step fully-enrolled --platform mobile --tier premium --vertical tutoring
-```
-
-## Output
-
-### Web (before account creation)
-
-For steps before `at-account-creation`, the browser stops at the target page and prints suggested credentials for when you reach the account form:
-
-```
-  ⏳ Starting web enrollment flow...
-
-  ✓ at-get-started
-  ✓ at-soft-intro-combined
-  ✓ at-vertical-selection
-  ✓ at-location
-
-✓ Browser stopped at: at-preferences
-  URL: https://www.dev.carezen.net/app/enrollment/provider/mv/preferences
-
-  Suggested credentials (for the account creation step):
-    Email:      prov-abc123@care.com
-    Password:   letmein1
-
-  Auto-closing browser.
-```
-
-### Web (after account creation)
-
-For steps at or past `at-account-creation`, the flow fills in all forms automatically. After creating the account, it extracts the MemberId and UUID from the browser session and prints the same credential block as mobile:
-
-```
-  ⏳ Starting web enrollment flow...
-
-  ✓ at-get-started
-  ✓ at-soft-intro-combined
-  ✓ at-vertical-selection
-  ✓ at-location
-  ✓ at-preferences
-  ✓ at-family-count
-  ✓ at-account-creation
-  ✓ at-family-connection (account created)
-  ✓ at-safety-screening
-
-✓ Browser stopped at: at-safety-screening
-  URL: https://www.dev.carezen.net/app/enrollment/provider/mv/safety-screening
-
-  Email:      prov-abc123@care.com
-  Password:   letmein1
-  MemberId:   1774484793
-  UUID:       a6fd308d-258b-4c24-8251-0c0e0b5778e0
-  Vertical:   CHILD_CARE (or SENIOR_CARE, PET_CARE, etc.)
-
-  Auto-closing browser.
-```
-
-If a step fails, credentials are still printed so you don't lose the user. With `--no-auto-close`, the browser stays open for debugging.
-
-### Mobile
-
-On success the CLI prints the credentials you need to log in:
-
-```
-✓ Provider created at step: fully-enrolled (mobile)
-
-  Email:      prov-a1b2c3d4@care.com
-  Password:   letmein1
-  MemberId:   1373700
-  UUID:       776ca774-fe58-44c5-bd1c-a3df3750d0ed
-  Vertical:   CHILD_CARE
-
-  ℹ Availability: Full-time preference is set. Detailed day/time schedule
-    is not visible in "Your Services & Availability" on first login.
-    Tap "Edit" > save once in the app to populate the calendar view.
-```
 
 ## Test Data
 
@@ -284,14 +303,14 @@ Mobile enrollment targets **Android only**. The iOS enrollment flow has inconsis
 ## Project Structure
 
 ```
-qa-provider-factory/
+jumper/
 ├── .env                          # Environment variables (not committed)
 ├── .env.example                  # Template for .env
 ├── setup.sh                      # First-time setup script
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts                  # CLI entry point
+│   ├── index.ts                  # CLI entry point + `start` subcommand
 │   ├── types.ts                  # Types, step lists, env config
 │   ├── verticals.ts              # Vertical registry (service IDs, web selectors)
 │   ├── api/
@@ -304,16 +323,25 @@ qa-provider-factory/
 │   │   ├── petcare.ts            # Pet Care payloads
 │   │   ├── housekeeping.ts       # Housekeeping payloads
 │   │   └── tutoring.ts           # Tutoring payloads
-│   └── steps/
-│       ├── web-flow.ts           # Playwright browser enrollment (web)
-│       ├── registry.ts           # Step pipeline (mobile)
-│       ├── account.ts            # Account creation
-│       ├── profile.ts            # Profile, availability, bio
-│       ├── mobile.ts             # Mobile-specific enrollment runners
-│       ├── upgrade.ts            # Payment setup + subscription (Stripe / Vantiv)
-│       ├── disclosure.ts         # BGC disclosure acceptance
-│       ├── enrollment.ts         # SSN trace, eligibility, BGC, Sterling callback
-│       └── photo.ts              # Programmatic profile photo generation + upload
+│   ├── steps/
+│   │   ├── web-flow.ts           # Playwright browser enrollment (web)
+│   │   ├── registry.ts           # Step pipeline (mobile)
+│   │   ├── account.ts            # Account creation
+│   │   ├── profile.ts            # Profile, availability, bio
+│   │   ├── mobile.ts             # Mobile-specific enrollment runners
+│   │   ├── upgrade.ts            # Payment setup + subscription (Stripe / Vantiv)
+│   │   ├── disclosure.ts         # BGC disclosure acceptance
+│   │   ├── enrollment.ts         # SSN trace, eligibility, BGC, Sterling callback
+│   │   └── photo.ts              # Programmatic profile photo generation + upload
+│   └── tui/
+│       ├── app.tsx               # Root TUI component + state machine
+│       ├── wizard.tsx            # Configuration wizard (6-stage)
+│       ├── execution.tsx         # Execution screen with step list + log drawer
+│       ├── log-panel.tsx         # Scrollable, filterable log renderer
+│       ├── emitter.ts            # RunEmitter event system
+│       ├── results-table.tsx     # Batch results table
+│       ├── step-descriptions.ts  # Human-readable step descriptions
+│       └── theme.ts              # TUI color constants
 ├── tests/
 │   ├── index.test.ts
 │   ├── client.test.ts
@@ -330,20 +358,21 @@ qa-provider-factory/
 
 1. Add the step name to `WEB_STEPS` in `src/types.ts`
 2. Add a new navigation block in `runWebEnrollmentFlow()` in `src/steps/web-flow.ts`
+3. Add a description in `src/tui/step-descriptions.ts`
 
 ### Adding a new mobile step
 
 1. Add the step name to `MOBILE_STEPS` in `src/types.ts`
 2. Write a runner function in the appropriate file under `src/steps/`
 3. Insert it in the correct position in the pipeline array in `src/steps/registry.ts`
+4. Add a description in `src/tui/step-descriptions.ts`
 
 ### Adding a new vertical
 
-1. Add the vertical name to the `Vertical` type in `src/types.ts`
+1. Add the vertical name to `ALL_VERTICALS` in `src/types.ts`
 2. Add an entry in `VERTICAL_REGISTRY` in `src/verticals.ts` with the service ID and web tile pattern
 3. Create a payload file at `src/payloads/<vertical>.ts` (copy an existing one and update the service-specific fields)
 4. Add the dynamic import case in `loadPayloads()` in `src/index.ts`
-5. Add the vertical to the CLI validation list in `parseArgs()`
 
 ### Running tests
 

@@ -11,6 +11,7 @@ import { VERTICAL_REGISTRY } from '../verticals.js';
 import { STEP_DESCRIPTIONS } from './step-descriptions.js';
 
 type Screen = 'wizard' | 'execution';
+let runId = 0;
 
 async function loadPayloads(vertical: Vertical): Promise<any> {
   switch (vertical) {
@@ -135,10 +136,16 @@ async function runExecution(
   emitter: RunEmitter,
   continueRef: React.MutableRefObject<(() => void) | null>,
 ): Promise<void> {
-  if (result.platform === 'web') {
-    await runWebExecution(result, envConfig, emitter, continueRef);
-  } else {
-    await runMobileExecution(result, envConfig, emitter, continueRef);
+  try {
+    if (result.platform === 'web') {
+      await runWebExecution(result, envConfig, emitter, continueRef);
+    } else {
+      await runMobileExecution(result, envConfig, emitter, continueRef);
+    }
+  } catch (err) {
+    emitter.stepError('fatal', (err as Error).message);
+  } finally {
+    emitter.runComplete();
   }
 }
 
@@ -146,22 +153,27 @@ export function App(): React.ReactElement {
   const { exit } = useApp();
   const [screen, setScreen] = useState<Screen>('wizard');
   const [config, setConfig] = useState<WizardResult | null>(null);
+  const [key, setKey] = useState(0);
   const emitterRef = useRef<RunEmitter>(new RunEmitter());
   const continueRef = useRef<(() => void) | null>(null);
 
-  const handleWizardComplete = useCallback((result: WizardResult) => {
-    setConfig(result);
-    setScreen('execution');
-
-    const emitter = emitterRef.current;
+  const startRun = useCallback((result: WizardResult) => {
+    const emitter = new RunEmitter();
+    emitterRef.current = emitter;
     const envConfig = ENV_CONFIGS[result.env];
 
+    setConfig(result);
+    setScreen('execution');
+    setKey(++runId);
+
     setTimeout(() => {
-      runExecution(result, envConfig, emitter, continueRef).catch((err) => {
-        emitter.stepError('fatal', (err as Error).message);
-      });
+      runExecution(result, envConfig, emitter, continueRef);
     }, 100);
   }, []);
+
+  const handleWizardComplete = useCallback((result: WizardResult) => {
+    startRun(result);
+  }, [startRun]);
 
   const handleStepContinue = useCallback(() => {
     continueRef.current?.();
@@ -176,6 +188,15 @@ export function App(): React.ReactElement {
     exit();
   }, [exit]);
 
+  const handleCreateAnother = useCallback(() => {
+    if (config) startRun(config);
+  }, [config, startRun]);
+
+  const handleNewConfig = useCallback(() => {
+    setScreen('wizard');
+    setConfig(null);
+  }, []);
+
   if (screen === 'wizard' || !config) {
     return <Wizard onComplete={handleWizardComplete} />;
   }
@@ -184,6 +205,7 @@ export function App(): React.ReactElement {
 
   return (
     <Execution
+      key={key}
       emitter={emitterRef.current}
       steps={steps}
       platform={config.platform}
@@ -194,6 +216,8 @@ export function App(): React.ReactElement {
       onStepContinue={handleStepContinue}
       onRetry={handleRetry}
       onQuit={handleQuit}
+      onCreateAnother={handleCreateAnother}
+      onNewConfig={handleNewConfig}
     />
   );
 }

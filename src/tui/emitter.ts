@@ -13,7 +13,8 @@ export type RunEvent =
   | { type: 'auth'; message: string }
   | { type: 'db-query'; query: string }
   | { type: 'info'; message: string }
-  | { type: 'context-update'; key: string; value: string };
+  | { type: 'context-update'; key: string; value: string }
+  | { type: 'run-complete' };
 
 export class RunEmitter extends EventEmitter {
   private _emit(event: RunEvent): void {
@@ -71,6 +72,10 @@ export class RunEmitter extends EventEmitter {
   contextUpdate(key: string, value: string): void {
     this._emit({ type: 'context-update', key, value });
   }
+
+  runComplete(): void {
+    this._emit({ type: 'run-complete' });
+  }
 }
 
 export function consoleAdapter(emitter: RunEmitter): void {
@@ -115,6 +120,9 @@ export function consoleAdapter(emitter: RunEmitter): void {
         console.log(`    ${e.message}`);
         break;
       case 'context-update':
+        break;
+      case 'run-complete':
+        console.log('  ✅ Run complete');
         break;
     }
   });

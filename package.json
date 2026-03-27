@@ -1,10 +1,10 @@
 {
-  "name": "qa-provider-factory",
+  "name": "jumper",
   "version": "1.0.0",
   "description": "CLI tool to create providers at specific enrollment checkpoints",
   "type": "module",
   "bin": {
-    "qa-provider-factory": "./dist/index.js"
+    "jumper": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

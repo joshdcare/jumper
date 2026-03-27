@@ -61,9 +61,9 @@ Examples:
 
 function createRootProgram(): Command {
   const program = new Command();
-  program.name('qa-provider-factory');
+  program.name('jumper');
   program
-    .command('interactive')
+    .command('start')
     .description('Launch interactive TUI for guided enrollment')
     .action(async () => {
       const { render } = await import('ink');
@@ -206,14 +206,15 @@ async function runInteractiveCli(argv: string[]): Promise<void> {
   await program.parseAsync(argv, { from: 'user' });
 }
 
-const isMainModule = process.argv[1]?.includes('index');
+const scriptPath = process.argv[1] ?? '';
+const isMainModule = scriptPath.includes('index') || scriptPath.endsWith('jumper');
 if (isMainModule) {
   const argv = process.argv.slice(2);
   if (process.argv.length <= 2) {
     console.log(BANNER);
-    console.log('  Run `jumper interactive` for guided mode.\n');
+    console.log('  Run `jumper start` for guided mode.\n');
   }
-  if (argv[0] === 'interactive') {
+  if (argv[0] === 'start') {
     runInteractiveCli(argv).catch((err) => {
       if (err instanceof CommanderError) {
         process.exit(err.exitCode);
