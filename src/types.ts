@@ -56,7 +56,6 @@ export interface CliOptions {
 export interface EnvConfig {
   baseUrl: string;
   apiKey: string;
-  stripeKey: string;
   sterlingCallbackUrl: string;
   db: {
     host: string;
@@ -90,7 +89,6 @@ export const ENV_CONFIGS: Record<string, EnvConfig> = {
   dev: {
     baseUrl: 'https://www.dev.carezen.net',
     apiKey: process.env.CZEN_API_KEY ?? '',
-    stripeKey: process.env.STRIPE_KEY ?? '',
     sterlingCallbackUrl:
       'https://safety-background-check.useast1.dev.omni.carezen.net',
     db: {

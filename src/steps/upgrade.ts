@@ -1,10 +1,34 @@
-import Stripe from 'stripe';
 import type { ApiClient } from '../api/client.js';
 import type { ProviderContext } from '../types.js';
 import {
   GET_PAYMENT_METHODS_INFORMATION,
   UPGRADE_PROVIDER_SUBSCRIPTION,
 } from '../api/graphql.js';
+
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_UZuwv5SEujgQze49pdvUY8zp';
+const STRIPE_TOKENS_URL = 'https://api.stripe.com/v1/tokens';
+
+async function createStripeToken(): Promise<string> {
+  const res = await fetch(STRIPE_TOKENS_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Bearer ${STRIPE_PUBLISHABLE_KEY}`,
+    },
+    body: new URLSearchParams({
+      'card[number]': '4111111111111111',
+      'card[exp_month]': '9',
+      'card[exp_year]': '2032',
+      'card[cvc]': '123',
+      'card[name]': 'Martina Goodram',
+    }).toString(),
+  });
+  const json = await res.json();
+  if (!json.id) {
+    throw new Error(`Stripe token creation failed: ${JSON.stringify(json).slice(0, 300)}`);
+  }
+  return json.id as string;
+}
 
 const VANTIV_EPROTECT_URL =
   'https://request.eprotect.vantivprelive.com/eProtect/paypage';
@@ -110,29 +134,8 @@ export async function upgradeSubscription(
     'Get payment methods (create Stripe customer)'
   );
 
-  const stripeKey = process.env.STRIPE_KEY;
-  if (!stripeKey) {
-    throw new Error('STRIPE_KEY environment variable is required for upgrade step');
-  }
-  const stripe = new Stripe(stripeKey);
-
-  const paymentMethod = await stripe.paymentMethods.create({
-    type: 'card',
-    card: {
-      number: '4111111111111111',
-      exp_month: 9,
-      exp_year: 2032,
-      cvc: '123',
-    },
-    billing_details: {
-      name: 'Martina Goodram',
-      address: { postal_code: '72204' },
-    },
-  });
-
-  if (!paymentMethod.id) {
-    throw new Error('Stripe payment method creation returned no ID');
-  }
+  const stripeToken = await createStripeToken();
+  console.log(`  ✓ Stripe token created: ${stripeToken.slice(0, 12)}…`);
 
   const pricing = payloads.pricingConfig[ctx.tier];
   const upgradeInput = {
@@ -143,8 +146,8 @@ export async function upgradeSubscription(
     pricingPlanId: pricing.pricingPlanId,
     promoCode: pricing.promoCode,
     paymentIdentifier: {
-      id: paymentMethod.id,
-      type: 'STRIPE_PAYMENT_METHOD_ID',
+      id: stripeToken,
+      type: 'STRIPE_TOKEN',
     },
   };
 

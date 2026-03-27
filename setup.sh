@@ -96,12 +96,10 @@ if [ "$skip_env" = false ]; then
   echo ""
 
   read -rp "  CZEN_API_KEY (Care.com API key): " czen_key
-  read -rp "  STRIPE_KEY (Stripe test key):    " stripe_key
   read -rp "  MYSQL_DB_PASS_DEV (MySQL password): " mysql_pass
 
   cat > .env <<EOF
 CZEN_API_KEY=${czen_key}
-STRIPE_KEY=${stripe_key}
 MYSQL_DB_PASS_DEV=${mysql_pass}
 EOF
 
@@ -109,7 +107,6 @@ EOF
 
   missing=()
   [ -z "$czen_key" ]   && missing+=("CZEN_API_KEY")
-  [ -z "$stripe_key" ] && missing+=("STRIPE_KEY")
   [ -z "$mysql_pass" ] && missing+=("MYSQL_DB_PASS_DEV")
 
   if [ ${#missing[@]} -gt 0 ]; then

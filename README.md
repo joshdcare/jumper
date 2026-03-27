@@ -40,7 +40,6 @@ Create a `.env` file in the project root (or copy from `.env.example`):
 
 ```
 CZEN_API_KEY=<your Care.com API key>
-STRIPE_KEY=<Stripe test key>
 MYSQL_DB_PASS_DEV=<MySQL read-only password>
 ```
 
@@ -60,7 +59,6 @@ After linking, the `jumper` command is available globally in your terminal.
 | Variable | Required for | How to get it |
 |----------|-------------|---------------|
 | `CZEN_API_KEY` | Mobile steps, web steps past account creation | Ask a team lead or check the QA vault |
-| `STRIPE_KEY` | Mobile `upgraded` and later | Stripe dashboard > Developers > API keys (test mode) |
 | `MYSQL_DB_PASS_DEV` | Mobile `fully-enrolled`; optional for UUID lookup on other steps | Ask a team lead or check the QA vault |
 
 ### Network access
