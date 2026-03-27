@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseArgs } from '../src/index.js';
 
 describe('parseArgs', () => {
-  it('parses positional step with defaults (web, premium, childcare)', () => {
-    const opts = parseArgs(['at-location']);
+  it('parses required --step flag with default platform (web)', () => {
+    const opts = parseArgs(['--step', 'at-location']);
     expect(opts.step).toBe('at-location');
     expect(opts.tier).toBe('premium');
     expect(opts.vertical).toBe('childcare');
@@ -11,40 +11,17 @@ describe('parseArgs', () => {
     expect(opts.platform).toBe('web');
   });
 
-  it('parses -m flag as mobile platform', () => {
-    const opts = parseArgs(['at-availability', '-m']);
-    expect(opts.step).toBe('at-availability');
-    expect(opts.platform).toBe('mobile');
-  });
-
-  it('parses --mobile flag as mobile platform', () => {
-    const opts = parseArgs(['at-availability', '--mobile']);
-    expect(opts.platform).toBe('mobile');
-  });
-
-  it('parses all short flags', () => {
+  it('parses all flags including platform', () => {
     const opts = parseArgs([
-      'at-availability', '-m', '-t', 'basic', '-v', 'petcare', '-e', 'dev',
-    ]);
-    expect(opts.step).toBe('at-availability');
-    expect(opts.platform).toBe('mobile');
-    expect(opts.tier).toBe('basic');
-    expect(opts.vertical).toBe('petcare');
-    expect(opts.env).toBe('dev');
-  });
-
-  it('parses all long flags', () => {
-    const opts = parseArgs([
-      'at-availability',
-      '--mobile',
+      '--step', 'at-availability',
       '--tier', 'basic',
-      '--vertical', 'seniorcare',
+      '--vertical', 'childcare',
+      '--platform', 'mobile',
       '--env', 'dev',
     ]);
     expect(opts.step).toBe('at-availability');
-    expect(opts.platform).toBe('mobile');
     expect(opts.tier).toBe('basic');
-    expect(opts.vertical).toBe('seniorcare');
+    expect(opts.platform).toBe('mobile');
   });
 
   it('accepts all web steps', () => {
@@ -55,41 +32,41 @@ describe('parseArgs', () => {
       'at-basic-payment', 'at-premium-payment', 'at-app-download',
     ];
     for (const step of webSteps) {
-      const opts = parseArgs([step]);
+      const opts = parseArgs(['--step', step, '--platform', 'web']);
       expect(opts.step).toBe(step);
     }
   });
 
   it('rejects invalid step', () => {
-    expect(() => parseArgs(['invalid'])).toThrow();
+    expect(() => parseArgs(['--step', 'invalid'])).toThrow();
   });
 
-  it('rejects mobile-only step without -m flag', () => {
-    expect(() => parseArgs(['at-availability'])).toThrow(
+  it('rejects mobile-only step on web platform', () => {
+    expect(() => parseArgs(['--step', 'at-availability', '--platform', 'web'])).toThrow(
       /not valid for web/
     );
   });
 
-  it('rejects web-only step with -m flag', () => {
-    expect(() => parseArgs(['at-location', '-m'])).toThrow(
+  it('rejects web-only step on mobile platform', () => {
+    expect(() => parseArgs(['--step', 'at-location', '--platform', 'mobile'])).toThrow(
       /not valid for mobile/
     );
   });
 
   it('rejects legacy steps that no longer exist', () => {
-    expect(() => parseArgs(['pre-upgrade'])).toThrow();
-    expect(() => parseArgs(['account-created'])).toThrow();
+    expect(() => parseArgs(['--step', 'pre-upgrade'])).toThrow();
+    expect(() => parseArgs(['--step', 'account-created'])).toThrow();
   });
 
   it('accepts all vertical names', () => {
     const verticals = ['childcare', 'seniorcare', 'petcare', 'housekeeping', 'tutoring'];
     for (const v of verticals) {
-      const opts = parseArgs(['at-location', '-v', v]);
+      const opts = parseArgs(['--step', 'at-location', '--vertical', v]);
       expect(opts.vertical).toBe(v);
     }
   });
 
   it('rejects invalid vertical', () => {
-    expect(() => parseArgs(['at-location', '-v', 'dogwalking'])).toThrow();
+    expect(() => parseArgs(['--step', 'at-location', '--vertical', 'dogwalking'])).toThrow();
   });
 });

@@ -12,21 +12,22 @@ export function parseArgs(argv: string[]): CliOptions {
   const program = new Command();
   program.exitOverride();
   program
-    .name('jumper')
-    .description('Jump to any provider enrollment checkpoint in seconds')
-    .argument('<step>', 'Enrollment checkpoint to jump to', (value: string) => {
-      const allSteps = [...ALL_STEPS];
-      if (!allSteps.includes(value as any)) {
-        throw new Error(
-          `Invalid step "${value}". Valid: ${allSteps.join(', ')}`
-        );
+    .requiredOption(
+      '--step <step>',
+      `Enrollment checkpoint (see steps below)`,
+      (value: string) => {
+        const allSteps = [...ALL_STEPS];
+        if (!allSteps.includes(value as any)) {
+          throw new Error(
+            `Invalid step "${value}". Valid: ${allSteps.join(', ')}`
+          );
+        }
+        return value as Step;
       }
-      return value as Step;
-    })
-    .option('-m, --mobile', 'Target mobile platform (default: web)')
-    .option('-t, --tier <tier>', 'Subscription tier (basic, premium)', 'premium')
+    )
+    .option('--tier <tier>', 'Subscription tier (basic, premium)', 'premium')
     .option(
-      '-v, --vertical <vertical>',
+      '--vertical <vertical>',
       'Service vertical (childcare, seniorcare, petcare, housekeeping, tutoring)',
       (value: string) => {
         const valid = ['childcare', 'seniorcare', 'petcare', 'housekeeping', 'tutoring'];
@@ -37,45 +38,40 @@ export function parseArgs(argv: string[]): CliOptions {
       },
       'childcare'
     )
-    .option('-e, --env <env>', 'Target environment', 'dev')
+    .option('--platform <platform>', 'Target platform (web, mobile)', 'web')
+    .option('--env <env>', 'Target environment', 'dev')
     .option('--no-auto-close', 'Keep browser open after logging credentials (web only)')
     .addHelpText('after', `
 Steps by platform:
 
-  Web (default):
+  Web (--platform web):
 ${[...WEB_STEPS].map(s => `    ${s}`).join('\n')}
 
-  Mobile (-m):
+  Mobile (--platform mobile):
 ${[...MOBILE_STEPS].map(s => `    ${s}`).join('\n')}
 
 Examples:
-  $ jumper at-location
-  $ jumper at-availability -m
-  $ jumper fully-enrolled -m -t basic
-  $ jumper at-premium-payment -v petcare
+  $ ./factory --step at-location --platform web
+  $ ./factory --step at-availability --platform mobile
+  $ ./factory --step fully-enrolled --platform mobile --tier basic
 `);
 
   program.parse(argv, { from: 'user' });
-  const step = program.processedArgs[0] as Step;
-  const rawOpts = program.opts();
+  const opts = program.opts() as CliOptions;
 
-  const platform: Platform = rawOpts.mobile ? 'mobile' : 'web';
+  const validPlatforms = ['web', 'mobile'];
+  if (!validPlatforms.includes(opts.platform)) {
+    throw new Error(`Invalid platform "${opts.platform}". Valid: ${validPlatforms.join(', ')}`);
+  }
 
-  const validSteps: readonly string[] = platform === 'mobile' ? MOBILE_STEPS : WEB_STEPS;
-  if (!validSteps.includes(step)) {
+  const validSteps = opts.platform === 'mobile' ? MOBILE_STEPS : WEB_STEPS;
+  if (!validSteps.includes(opts.step as any)) {
     throw new Error(
-      `Step "${step}" is not valid for ${platform} platform. Valid steps: ${[...validSteps].join(', ')}`
+      `Step "${opts.step}" is not valid for ${opts.platform} platform. Valid steps: ${[...validSteps].join(', ')}`
     );
   }
 
-  return {
-    step,
-    tier: rawOpts.tier as Tier,
-    vertical: rawOpts.vertical as Vertical,
-    env: rawOpts.env,
-    platform,
-    autoClose: rawOpts.autoClose,
-  };
+  return opts;
 }
 
 async function loadPayloads(vertical: Vertical) {

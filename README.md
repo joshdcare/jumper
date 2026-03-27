@@ -1,19 +1,17 @@
-# Jumper
+# QA Provider Factory
 
-A CLI tool for the PEXP team that teleports provider enrollment to specific checkpoints. Instead of manually clicking through 15+ screens to reach a particular point in the flow, run one command and jump there in seconds.
-
-Named after the [2008 film](https://en.wikipedia.org/wiki/Jumper_(film)) — pick your destination, teleport instantly.
+A CLI tool for the PEXP team that navigates provider enrollment to specific checkpoints. Instead of manually clicking through 15+ screens to reach a particular point in the flow, run one command and get there in seconds.
 
 Supports **five verticals**: Child Care, Senior Care, Pet Care, Housekeeping, and Tutoring.
 
-- **Web** (default): Opens a real Chromium browser and drives through enrollment pages, stopping at the target page. The browser auto-closes after logging credentials; pass `--no-auto-close` to keep it open for manual testing.
-- **Mobile** (`-m`): Uses API calls to create an account at a specific enrollment state.
+- **Web**: Opens a real Chromium browser and drives through enrollment pages, stopping at the target page. The browser auto-closes after logging credentials; pass `--no-auto-close` to keep it open for manual testing.
+- **Mobile**: Uses API calls to create an account at a specific enrollment state.
 
 ## Setup
 
 ```bash
 git clone <repo-url>
-cd jumper
+cd qa-provider-factory
 ./setup.sh
 ```
 
@@ -69,23 +67,23 @@ You must be connected to the **VPN** for SPI endpoints and the dev database to b
 ## Usage
 
 ```bash
-./jumper <step> [-m] [-t basic|premium] [-v childcare] [-e dev] [--no-auto-close]
+npm run create --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical childcare] [--env dev] [--no-auto-close]
 ```
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `<step>` | | *(required)* | Enrollment checkpoint to jump to |
-| `--mobile` | `-m` | *(off — web)* | Target mobile (Android) instead of web |
-| `--tier` | `-t` | `premium` | Subscription tier — `basic` or `premium` |
-| `--vertical` | `-v` | `childcare` | Service vertical — `childcare`, `seniorcare`, `petcare`, `housekeeping`, `tutoring` |
-| `--env` | `-e` | `dev` | Target environment |
-| `--no-auto-close` | | *(off)* | Keep the browser open after logging credentials (web only) |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--step` | *(required)* | Enrollment checkpoint to stop at |
+| `--platform` | `web` | Target platform — `web` or `mobile` (Android) |
+| `--tier` | `premium` | Subscription tier — `basic` or `premium` |
+| `--vertical` | `childcare` | Service vertical — `childcare`, `seniorcare`, `petcare`, `housekeeping`, `tutoring` |
+| `--env` | `dev` | Target environment |
+| `--no-auto-close` | *(off)* | Keep the browser open after logging credentials (web only) |
 
 ## Enrollment Steps
 
 The tool runs through enrollment up to and including the step you specify.
 
-### Web (default)
+### Web (`--platform web`)
 
 Web drives a real Chromium browser through the enrollment flow. The browser auto-closes after logging credentials. Use `--no-auto-close` to keep it open for manual testing.
 
@@ -111,14 +109,14 @@ Steps before `at-account-creation` navigate the browser without creating an acco
 
 | Step | Fields entered |
 |------|---------------|
-| `at-vertical-selection` | Selects the vertical specified by `-v` |
+| `at-vertical-selection` | Selects the vertical specified by `--vertical` |
 | `at-location` | ZIP code `72204` |
 | `at-account-creation` | First name, last name, email, password, gender, age checkbox |
 | `at-basic-payment` / `at-premium-payment` | Name on card, credit card number, expiration, CVV, billing ZIP (via Stripe Elements) |
 
-### Mobile (`-m`)
+### Mobile (`--platform mobile`)
 
-Mobile uses API calls to build account state at each checkpoint. Steps are cumulative — `fully-enrolled` creates an account, completes the profile, and purchases a subscription.
+Mobile uses API calls to build account state at each checkpoint. Steps are cumulative — `--step upgraded` creates an account, completes the profile, and purchases a subscription.
 
 | Step | What it does | Where the user lands |
 |------|-------------|---------------------|
@@ -134,28 +132,28 @@ Mobile uses API calls to build account state at each checkpoint. Steps are cumul
 
 ```bash
 # Web — stop at the location page (Child Care, the default)
-./jumper at-location
+npm run create --step at-location --platform web
 
 # Web — Senior Care provider at account creation
-./jumper at-account-creation -v seniorcare
+npm run create --step at-account-creation --platform web --vertical seniorcare
 
 # Web — stop at basic checkout
-./jumper at-basic-payment
+npm run create --step at-basic-payment --platform web
 
 # Web — Pet Care provider through premium checkout
-./jumper at-premium-payment -v petcare
+npm run create --step at-premium-payment --platform web --vertical petcare
 
 # Web — complete enrollment through app download (basic tier)
-./jumper at-app-download -t basic
+npm run create --step at-app-download --platform web --tier basic
 
 # Mobile — Housekeeping provider stopped at the availability screen
-./jumper at-availability -m -v housekeeping
+npm run create --step at-availability --platform mobile --vertical housekeeping
 
 # Mobile — fully enrolled Basic user
-./jumper fully-enrolled -m -t basic
+npm run create --step fully-enrolled --platform mobile --tier basic
 
 # Mobile — fully enrolled Tutoring Premium user
-./jumper fully-enrolled -m -v tutoring
+npm run create --step fully-enrolled --platform mobile --tier premium --vertical tutoring
 ```
 
 ## Output
@@ -255,11 +253,11 @@ The web flow uses Playwright selectors (role, label, text) to interact with enro
 
 ### Stripe checkout (web)
 
-The checkout page uses Stripe Elements, which render card number, expiration, and CVC fields inside separate iframes. Jumper handles this by clicking the card number iframe and using keyboard input (`page.keyboard.type`) with Tab between fields. If Stripe changes its iframe structure or titles, update `fillCheckoutForm()` in `web-flow.ts`.
+The checkout page uses Stripe Elements, which render card number, expiration, and CVC fields inside separate iframes. The factory handles this by clicking the card number iframe and using keyboard input (`page.keyboard.type`) with Tab between fields. If Stripe changes its iframe structure or titles, update `fillCheckoutForm()` in `web-flow.ts`.
 
 ### Availability calendar on mobile
 
-The mobile app's "Your Services & Availability" detail view (the day/time grid) reads from a legacy database table that is only populated when a user saves availability through the app UI. Jumper sets the Full-time preference and acknowledges availability via the API, but the detailed Mon-Fri 9am-5pm grid requires one manual action after first login:
+The mobile app's "Your Services & Availability" detail view (the day/time grid) reads from a legacy database table that is only populated when a user saves availability through the app UI. The factory sets the Full-time preference and acknowledges availability via the API, but the detailed Mon-Fri 9am-5pm grid requires one manual action after first login:
 
 1. Open "Your Services & Availability"
 2. Tap **Edit**
@@ -269,7 +267,7 @@ This is a one-time step per user.
 
 ### iOS
 
-Mobile enrollment targets **Android only**. The iOS enrollment flow has inconsistencies that cause users to land on unexpected screens. Avoid iOS for Jumper-created users until this is resolved.
+Mobile enrollment targets **Android only**. The iOS enrollment flow has inconsistencies that cause users to land on unexpected screens. Avoid iOS for factory-created users until this is resolved.
 
 ## Troubleshooting
 
@@ -286,15 +284,14 @@ Mobile enrollment targets **Android only**. The iOS enrollment flow has inconsis
 ## Project Structure
 
 ```
-jumper/
+qa-provider-factory/
 ├── .env                          # Environment variables (not committed)
 ├── .env.example                  # Template for .env
-├── jumper                        # CLI entry point (shell wrapper)
 ├── setup.sh                      # First-time setup script
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts                  # CLI parser and main runner
+│   ├── index.ts                  # CLI entry point
 │   ├── types.ts                  # Types, step lists, env config
 │   ├── verticals.ts              # Vertical registry (service IDs, web selectors)
 │   ├── api/
