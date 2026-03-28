@@ -1,7 +1,7 @@
 # Run Recorder — Design Spec
 
 **Date:** 2026-03-27
-**Status:** Draft
+**Status:** Review
 **Scope:** `jumper` (TypeScript)
 
 ## Problem
@@ -21,6 +21,11 @@ Web flows open a visible browser, but there's no persistent artifact of what hap
 - Remote storage or upload of artifacts
 - Mobile device emulator integration
 - Real-time streaming of run data
+- Batch run orchestration (each provider run is independent; multi-provider batching is future work)
+
+## Security Note
+
+Run artifacts contain sensitive test data: emails, passwords, auth tokens, and API request/response bodies. The `runs/` directory is `.gitignore`d and local-only. No redaction is applied in v1 — these are test accounts on dev environments. If this tool is ever used against production-like data, redaction should be added.
 
 ## Run Folder Structure
 
@@ -60,7 +65,9 @@ Mobile runs contain only `report.json` and `report.html`.
     "password": "letmein1",
     "memberId": "123456",
     "uuid": "abc-def-...",
-    "authToken": "..."
+    "authToken": "...",
+    "accessToken": "...",
+    "vertical": "CHILDCARE"
   },
   "steps": [
     {
@@ -83,25 +90,51 @@ Mobile runs contain only `report.json` and `report.html`.
       "error": null
     }
   ],
-  "errors": [
-    {
-      "step": "at-upgraded",
-      "message": "enroll/upgrade/provider: 500 Internal Server Error",
-      "stack": "Error: ...",
-      "timestamp": "2026-03-27T14:30:34.000Z"
-    }
-  ]
+  "errors": []
 }
 ```
 
-- Request/response bodies truncated at 2KB max
-- Each step owns its `requests` array — clear mapping of network calls to steps
-- Web steps include `screenshot` filename; mobile steps set it to `null`
-- Top-level `errors` array collects failures with stack traces
+### Schema Rules
+
+- **Truncation:** All request/response bodies truncated at 2KB max using a shared `truncate()` helper. This applies uniformly to `ApiClient.trackedFetch`, web flow fetch listeners, and the recorder.
+- **Request/response pairing:** The recorder pairs `network-request` and `network-response` events into a single `requests[]` entry by matching on URL (short URL) and temporal ordering (the next response for a given URL after a request). Unpaired requests (no response received) are included with `status: null`. This assumes sequential requests per URL, which holds for jumper's current serial step execution. If parallel requests to the same URL are introduced in the future, a correlation ID should be added to the emitter events.
+- **`step.error` vs `errors[]`:** `step.error` is the error message string for that step (from the emitter's `step-error` event). `errors[]` is a top-level array that duplicates failed step errors with full stack traces. Stack traces are captured at the **catch site** in the pipeline loop (via `(err as Error).stack ?? (err as Error).message`) and passed to the recorder through a new `recorder.recordError(step, error)` method — not through the emitter, which only carries message strings. A failed step populates both. `errors[]` exists for quick "what went wrong" scanning without walking the steps array.
+- **`context` fields:** All fields from `ProviderContext` are included. Fields not available for a given platform are set to `null` (e.g., `accessToken` is `null` for web flows that don't acquire one).
+- **`screenshot`:** Set to the relative filename for web steps, `null` for mobile steps or if the screenshot failed.
+- **Multipart/FormData bodies:** Serialized as `"[FormData: N fields]"` in `requestBody` since the raw multipart encoding is not useful in a report.
+
+## Truncation Helper
+
+Shared utility used by `ApiClient`, web flow listeners, and the recorder:
+
+```typescript
+export function truncate(str: string, maxLen = 2048): string {
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen) + `...[truncated, ${str.length} bytes total]`;
+}
+```
 
 ## RunRecorder Class
 
 **File:** `jumper/src/recorder/run-recorder.ts`
+
+### ReportContext
+
+A unified type for the `finish()` call that covers both platforms:
+
+```typescript
+interface ReportContext {
+  email: string;
+  password: string;
+  memberId?: string;
+  uuid?: string;
+  authToken?: string;
+  accessToken?: string;
+  vertical?: string;
+}
+```
+
+Both `ProviderContext` (mobile) and `WebFlowResult` (web) satisfy this. At the call site, pass whichever you have — missing fields become `null` in `report.json`.
 
 ### Constructor
 
@@ -114,106 +147,206 @@ interface RunRecorderConfig {
 }
 
 const recorder = new RunRecorder(config);
+// Creates: jumper/runs/2026-03-27_14-30-22_web_childcare/
+// Also creates screenshots/ subdirectory for web runs
 ```
 
-Creates the timestamped run directory under `jumper/runs/`.
+Creates the timestamped run directory (and `screenshots/` subdirectory for web) under `jumper/runs/` synchronously at construction time using `mkdirSync`.
+
+### Internal State
+
+The recorder holds a private `browserContext?: BrowserContext` reference, set by `startTrace()`. This is used by `finish()` to stop tracing and finalize video. Mobile runs never set this, so `finish()` skips tracing/video steps when it is `undefined`.
 
 ### API
 
 | Method | Purpose |
 |--------|---------|
-| `attach(emitter: RunEmitter)` | Subscribe to emitter events. Captures step start/complete/error and network events (including request/response bodies). |
-| `playwrightContextOptions()` | Returns Playwright `BrowserContext` options with `recordVideo` configured to save into the run directory. Called before creating the browser context. Web flows only. |
-| `startTrace(context: BrowserContext)` | Calls `context.tracing.start({ screenshots: true, snapshots: true })`. Web flows only. |
-| `screenshot(page: Page, stepName: string)` | Takes a full-page screenshot, saves to `screenshots/{index}_{stepName}.png`. Web flows only. |
-| `finish(ctx: ProviderContext)` | Stops tracing (saves `trace.zip`), moves the video file into place, writes `report.json`, generates `report.html`, logs the run folder path. |
+| `attach(emitter: RunEmitter)` | Subscribe to all emitter events. Captures step transitions and network events (including `body` fields). Pairs request/response by URL+order. |
+| `playwrightContextOptions()` | Returns `{ recordVideo: { dir: '<runDir>' } }` for Playwright `BrowserContext` creation. Web only. |
+| `startTrace(context: BrowserContext)` | Stores `context` internally, then calls `context.tracing.start({ screenshots: true, snapshots: true })`. Web only. |
+| `screenshot(page: Page, stepName: string, index: number)` | Takes a full-page screenshot via `page.screenshot({ path, fullPage: true })`, saves to `screenshots/{index:02d}_{stepName}.png`. Wrapped in try/catch — failure logs a warning but does not abort the run. Web only. |
+| `recordError(step: string, err: Error)` | Stores the error with full stack trace for the `errors[]` array in `report.json`. Called from the pipeline's catch block. |
+| `finish(ctx: ReportContext)` | **Web:** stops tracing via `this.browserContext.tracing.stop({ path })`, resolves the video file (globs `<runDir>/*.webm`, renames first match to `video.webm`). **Both:** writes `report.json`, generates `report.html`, logs the run folder path to console. Idempotent — second call is a no-op. |
 
-### Lifecycle
+### Web Shutdown Sequence (inside `finish()`)
 
-```
-// Construction — creates run dir
-const recorder = new RunRecorder({ platform, vertical, tier, targetStep });
+`finish()` owns the entire web shutdown sequence. Callers must **not** close the browser context before calling `finish()`. The order:
 
-// Attach to emitter — captures all events
+1. `this.browserContext.tracing.stop({ path: '<runDir>/trace.zip' })` — tracing must stop while context is still open
+2. `this.browserContext.close()` — triggers video finalization
+3. Glob `<runDir>/*.webm`, rename first match to `<runDir>/video.webm`
+4. If no `.webm` found, log a warning (don't fail)
+5. Write `report.json` and `report.html`
+
+For mobile runs, steps 1-4 are skipped (no `browserContext`).
+
+### Lifecycle — Web Flow
+
+```typescript
+const recorder = new RunRecorder({ platform: 'web', vertical, tier, targetStep });
+const emitter = new RunEmitter();
 recorder.attach(emitter);
 
-// Web only — configure Playwright
+// Inside runWebEnrollmentFlow, recorder configures browser context:
 const context = await browser.newContext(recorder.playwrightContextOptions());
-await recorder.startTrace(context);
+await recorder.startTrace(context);  // stores context internally
 
-// Web only — after each step
-await recorder.screenshot(page, stepName);
+// After each step completes inside the flow:
+await recorder.screenshot(page, stepName, stepIndex);
 
-// End of run
+// End — do NOT close context yourself. finish() handles tracing stop → context close → video.
+await recorder.finish({ email, password, memberId, vertical });
+```
+
+### Lifecycle — Mobile Flow
+
+```typescript
+const recorder = new RunRecorder({ platform: 'mobile', vertical, tier, targetStep });
+const emitter = new RunEmitter();
+recorder.attach(emitter);
+
+const client = new ApiClient(baseUrl, apiKey);
+client.setEmitter(emitter);
+
+// Run pipeline as normal — step runners already call emitter methods
+
 await recorder.finish(providerContext);
 ```
 
-## ApiClient Change
+## Emitter Changes
 
-`trackedFetch` in `jumper/src/api/client.ts` currently emits network events with method, URL, status, and duration. Two new fields are added to the emitted event:
+**No type changes needed.** The existing `RunEvent` union already has `body?: string` on both `network-request` and `network-response`. The recorder uses these existing fields.
 
-- `requestBody: string` — the outgoing body, truncated to 2KB
-- `responseBody: string` — the response text, truncated to 2KB
+The only change: ensure `ApiClient.trackedFetch` passes response bodies through the emitter's `networkResponse` call (it may currently truncate too aggressively or omit them). Standardize to 2KB truncation using the shared `truncate()` helper.
 
-The TUI display logic ignores these fields (they aren't rendered). Only `RunRecorder` consumes them.
+## ApiClient Changes
 
-### Truncation Helper
+In `trackedFetch`:
 
-```typescript
-function truncate(str: string, maxLen = 2048): string {
-  if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen) + `...[truncated, ${str.length} bytes total]`;
-}
-```
+1. Capture the outgoing body. For `string` bodies, pass through `truncate()`. For `FormData` bodies, emit `"[FormData: N fields]"`.
+2. Capture the response text via `res.text()` (already done), pass through `truncate()`.
+3. Emit both via `emitter.networkRequest(method, url, truncatedRequestBody)` and `emitter.networkResponse(status, url, duration, truncatedResponseBody)`.
+
+The existing `body` field on both event types carries this data. No new fields on the `RunEvent` type.
 
 ## HTML Report
+
+**File:** `jumper/src/recorder/html-template.ts`
 
 Self-contained single `.html` file with inline CSS. No external dependencies.
 
 **Layout:**
 - **Banner** — pass/fail badge, platform, vertical, tier, total duration
-- **Context** — email, password, memberID, UUID
-- **Steps timeline** — each step as a collapsible card showing status, duration, and nested request/response details
-- **Screenshots** — embedded as base64 thumbnails (clickable to expand), web flows only
-- **Errors** — highlighted section at the bottom if any failures occurred
+- **Context** — email, password, memberID, UUID, vertical
+- **Steps timeline** — each step as a collapsible `<details>` element showing status, duration, and nested request/response bodies in `<pre>` blocks
+- **Screenshots** — embedded as base64 `<img>` thumbnails (clickable to expand full-size in a lightbox-style overlay). Web flows only. Capped at 500KB per image to prevent bloated HTML; if a screenshot exceeds this, link to the file instead of embedding.
+- **Errors** — highlighted red section at the bottom if any failures occurred, with full stack traces
+
+## Graceful Shutdown
+
+Current `index.ts` uses `process.exit(1)` on mobile failures, which skips cleanup. Changes:
+
+1. Add a `registerShutdownHandlers(recorder: RunRecorder)` helper in `index.ts` that registers `SIGINT` and `SIGTERM` handlers calling `recorder.finish()` before exiting. This is called at the top of both `runMobileFlow` and `runWebFlow` after recorder construction, giving the signal handlers closure access to the recorder instance.
+2. Both mobile and web error paths use `try/finally` to call `recorder.finish(ctx)` before `process.exit(1)`.
+3. The `finish()` method is idempotent — safe to call multiple times (second call is a no-op). Signal handlers and `finally` blocks may both invoke it without conflict.
+
+```typescript
+function registerShutdownHandlers(recorder: RunRecorder) {
+  const handler = async () => {
+    await recorder.finish({ email: '', password: '' });
+    process.exit(1);
+  };
+  process.once('SIGINT', handler);
+  process.once('SIGTERM', handler);
+}
+```
 
 ## Integration Points
 
-### Web Flow (`web-flow.ts`)
+### `index.ts` — Mobile
 
 ```typescript
-// Before browser launch
-const recorder = new RunRecorder({ platform: 'web', vertical, tier, targetStep });
-recorder.attach(emitter);
+async function runMobileFlow(opts, envConfig) {
+  const emitter = new RunEmitter();
+  const recorder = new RunRecorder({
+    platform: 'mobile', vertical: opts.vertical,
+    tier: opts.tier, targetStep: opts.step,
+  });
+  recorder.attach(emitter);
+  registerShutdownHandlers(recorder);
 
-// Browser context creation
-const context = await browser.newContext({
-  ...recorder.playwrightContextOptions(),
-  // existing options
-});
-await recorder.startTrace(context);
+  const client = new ApiClient(envConfig.baseUrl, envConfig.apiKey);
+  client.setEmitter(emitter);
 
-// After each step completes
-await recorder.screenshot(page, stepName);
+  let failed = false;
+  try {
+    // ... existing pipeline loop, step runners emit via client's emitter ...
+  } catch (err) {
+    recorder.recordError(currentStepName, err as Error);
+    failed = true;
+  } finally {
+    await recorder.finish(ctx);
+  }
 
-// End
-await recorder.finish(providerContext);
+  if (failed) process.exit(1);
+}
 ```
 
-### Mobile Flow (`index.ts` / pipeline orchestration)
+### `index.ts` — Web
 
 ```typescript
-const recorder = new RunRecorder({ platform: 'mobile', vertical, tier, targetStep });
-recorder.attach(emitter);
+async function runWebFlow(opts, envConfig) {
+  const emitter = new RunEmitter();
+  const recorder = new RunRecorder({
+    platform: 'web', vertical: opts.vertical,
+    tier: opts.tier, targetStep: opts.step,
+  });
+  recorder.attach(emitter);
+  registerShutdownHandlers(recorder);
 
-// ... run pipeline as normal ...
+  let webResult: WebFlowResult | undefined;
+  try {
+    webResult = await runWebEnrollmentFlow(
+      opts.step, opts.tier, envConfig, verticalConfig,
+      serviceType, opts.autoClose, emitter, recorder,
+    );
+  } catch (err) {
+    recorder.recordError('web-flow', err as Error);
+  } finally {
+    await recorder.finish({
+      email: webResult?.email ?? '',
+      password: webResult?.password ?? '',
+      memberId: webResult?.memberId,
+      vertical: webResult?.vertical,
+    });
+  }
 
-await recorder.finish(providerContext);
+  if (!webResult) process.exit(1);
+}
 ```
 
-### .gitignore
+### `web-flow.ts`
 
-Add `runs/` to `jumper/.gitignore` — run artifacts are local-only.
+- Accept `emitter?: RunEmitter` and `recorder?: RunRecorder` as new optional parameters
+- The existing `onStepComplete` callback parameter is removed. Its role (post-step hook) is replaced by `recorder?.screenshot()`. Any callers using `onStepComplete` should migrate to the recorder.
+- After each step completes, call `await recorder?.screenshot(page, stepName, index)`
+- Configure browser context with `recorder?.playwrightContextOptions()` merged into existing options
+- Call `recorder?.startTrace(context)` after context creation
+- Close context before returning so video finalizes
+- Map the returned `WebFlowResult` to `ReportContext` at the call site in `index.ts`:
+  ```typescript
+  const reportCtx: ReportContext = {
+    email: webResult.email,
+    password: webResult.password,
+    memberId: webResult.memberId,
+    vertical: webResult.vertical,
+  };
+  await recorder.finish(reportCtx);
+  ```
+
+### `.gitignore`
+
+Add `runs/` to `jumper/.gitignore`.
 
 ## Files Changed / Created
 
@@ -221,15 +354,16 @@ Add `runs/` to `jumper/.gitignore` — run artifacts are local-only.
 |------|--------|
 | `src/recorder/run-recorder.ts` | **New** — RunRecorder class |
 | `src/recorder/html-template.ts` | **New** — HTML report generation |
-| `src/api/client.ts` | **Modified** — add requestBody/responseBody to network events |
-| `src/tui/emitter.ts` | **Modified** — add requestBody/responseBody to NetworkEvent type |
-| `src/steps/web-flow.ts` | **Modified** — wire in recorder (context options, tracing, screenshots) |
-| `src/index.ts` | **Modified** — wire in recorder for mobile flows |
+| `src/recorder/truncate.ts` | **New** — shared truncation utility |
+| `src/api/client.ts` | **Modified** — pass request/response bodies through emitter using `truncate()` |
+| `src/steps/web-flow.ts` | **Modified** — accept emitter + recorder params, add screenshots + tracing |
+| `src/index.ts` | **Modified** — wire RunRecorder + RunEmitter into both mobile and web paths |
 | `.gitignore` | **Modified** — add `runs/` |
 
 ## Edge Cases
 
-- **Run interrupted (Ctrl+C):** `finish()` should be called in a `finally` block or process exit handler so partial reports are still written.
+- **Run interrupted (Ctrl+C):** `SIGINT`/`SIGTERM` handlers call `recorder.finish()` so partial reports are still written. `finish()` is idempotent.
 - **Disk space:** Video files can be large. No automatic cleanup — user manages the `runs/` folder.
-- **Batch runs (multiple providers):** Each provider in a batch gets its own run folder.
-- **Failed screenshots:** If a screenshot fails (page crashed, browser closed), log the error in the step but don't abort the run.
+- **Failed screenshots:** Wrapped in try/catch. Failure logs a warning, sets `screenshot: null` in the report, does not abort the run.
+- **No video produced:** If browser crashes before video finalizes, glob returns empty. Log a warning, skip `video.webm`.
+- **HTML size:** Screenshots embedded as base64 are capped at 500KB each. Larger screenshots are linked as file paths instead.
