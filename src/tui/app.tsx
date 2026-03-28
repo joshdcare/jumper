@@ -9,6 +9,7 @@ import { ENV_CONFIGS } from '../types.js';
 import type { VerticalConfig } from '../verticals.js';
 import { VERTICAL_REGISTRY } from '../verticals.js';
 import { STEP_DESCRIPTIONS } from './step-descriptions.js';
+import { RunRecorder } from '../recorder/run-recorder.js';
 
 type Screen = 'wizard' | 'execution';
 let runId = 0;
@@ -43,23 +44,37 @@ async function runWebExecution(
       }
 
       const verticalConfig = VERTICAL_REGISTRY[vertical];
+      const recorder = new RunRecorder({
+        platform: 'web',
+        vertical,
+        tier: result.tier,
+        targetStep: result.step,
+      });
+      recorder.attach(emitter);
 
       const onStepComplete =
         result.executionMode === 'step-through'
           ? () => new Promise<void>((resolve) => { continueRef.current = resolve; })
           : undefined;
 
-      await runWebEnrollmentFlow(
-        result.step,
-        result.tier,
-        envConfig,
-        verticalConfig,
-        verticalConfig.serviceId,
-        result.autoClose,
-        emitter,
-        onStepComplete,
-        undefined,
-      );
+      try {
+        await runWebEnrollmentFlow(
+          result.step,
+          result.tier,
+          envConfig,
+          verticalConfig,
+          verticalConfig.serviceId,
+          result.autoClose,
+          emitter,
+          onStepComplete,
+          recorder,
+        );
+      } catch (err) {
+        recorder.recordError('web-flow', err as Error);
+        throw err;
+      } finally {
+        await recorder.finish({ email: '', password: '' });
+      }
 
       emitter.contextUpdate('vertical', vertical);
     }
@@ -82,6 +97,14 @@ async function runMobileExecution(
         emitter.info(`── Run ${i + 1}/${result.count} · ${vertical} ──`);
       }
 
+      const recorder = new RunRecorder({
+        platform: 'mobile',
+        vertical,
+        tier: result.tier,
+        targetStep: result.step,
+      });
+      recorder.attach(emitter);
+
       const client = new ApiClient(envConfig.baseUrl, envConfig.apiKey);
       client.setEmitter(emitter);
 
@@ -98,6 +121,7 @@ async function runMobileExecution(
         vertical: verticalConfig.serviceId,
       };
 
+      let failed = false;
       for (const stepDef of steps) {
         const description = STEP_DESCRIPTIONS[stepDef.name] ?? stepDef.name;
         emitter.stepStart(stepDef.name, description);
@@ -121,12 +145,16 @@ async function runMobileExecution(
             await new Promise<void>((resolve) => { continueRef.current = resolve; });
           }
         } catch (err) {
+          recorder.recordError(stepDef.name, err as Error);
           emitter.stepError(stepDef.name, (err as Error).message);
-          return;
+          failed = true;
+          break;
         }
       }
 
+      await recorder.finish(ctx);
       emitter.contextUpdate('vertical', vertical);
+      if (failed) return;
     }
   }
 }

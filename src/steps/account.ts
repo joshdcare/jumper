@@ -72,6 +72,7 @@ export async function createAccount(
   }
 
   emitter?.contextUpdate('email', ctx.email);
+  emitter?.contextUpdate('password', ctx.password);
   emitter?.contextUpdate('memberId', String(ctx.memberId));
   if (ctx.uuid) emitter?.contextUpdate('uuid', ctx.uuid);
 
@@ -156,6 +157,7 @@ export async function createAccountMobile(
   }
 
   emitter?.contextUpdate('email', ctx.email);
+  emitter?.contextUpdate('password', ctx.password);
   emitter?.contextUpdate('memberId', String(ctx.memberId));
   if (ctx.uuid) emitter?.contextUpdate('uuid', ctx.uuid);
 

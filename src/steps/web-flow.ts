@@ -89,6 +89,11 @@ export async function runWebEnrollmentFlow(
         memberId = extracted.memberId;
         uuid = extracted.uuid;
       }
+      emitter?.contextUpdate('email', email);
+      emitter?.contextUpdate('password', password);
+      if (memberId) emitter?.contextUpdate('memberId', memberId);
+      if (uuid) emitter?.contextUpdate('uuid', uuid);
+      emitter?.contextUpdate('vertical', vertical);
       console.log('');
       console.log(`  Email:      ${email}`);
       console.log(`  Password:   ${password}`);

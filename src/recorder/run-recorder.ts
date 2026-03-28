@@ -167,6 +167,8 @@ export class RunRecorder {
   }
 
   private handleEvent(e: RunEvent): void {
+    if (this.finished) return;
+
     switch (e.type) {
       case 'step-start':
         this.currentStep = {

@@ -7,6 +7,8 @@ Supports **five verticals**: Child Care, Senior Care, Pet Care, Housekeeping, an
 - **Web**: Opens a real Chromium browser and drives through enrollment pages, stopping at the target page. The browser auto-closes after logging credentials; pass `--no-auto-close` to keep it open for manual testing.
 - **Mobile**: Uses API calls to create an account at a specific enrollment state.
 
+Every run (CLI and TUI) is automatically recorded to `runs/` with a structured JSON report, an HTML report, and — for web flows — a video recording, Playwright trace, and per-step screenshots.
+
 ## Setup
 
 ```bash
@@ -199,6 +201,51 @@ jumper --step fully-enrolled --platform mobile --tier premium --vertical tutorin
 
 ---
 
+## Run Recording
+
+Every run automatically generates a timestamped folder under `runs/` with full debug artifacts. No flags required — recording is always on.
+
+```
+runs/
+└── 2026-03-28_14-22-05_web_childcare/
+    ├── report.json        # Structured run data (steps, requests, errors, context)
+    ├── report.html        # Self-contained HTML report with embedded screenshots
+    ├── video.webm         # Browser recording (web only)
+    ├── trace.zip          # Playwright trace — open with `npx playwright show-trace trace.zip` (web only)
+    └── screenshots/       # Per-step screenshots (web only)
+        ├── 01_at-get-started.png
+        ├── 02_at-soft-intro-combined.png
+        └── ...
+```
+
+### What's captured
+
+| Artifact | Web | Mobile | Description |
+|----------|-----|--------|-------------|
+| `report.json` | ✓ | ✓ | Steps with pass/fail status, duration, network requests (truncated bodies), errors with stack traces, and provider context |
+| `report.html` | ✓ | ✓ | Human-readable report with collapsible sections and embedded screenshots |
+| `video.webm` | ✓ | — | Full browser video from context creation to close |
+| `trace.zip` | ✓ | — | Playwright trace with DOM snapshots — replayable with `npx playwright show-trace` |
+| `screenshots/` | ✓ | — | PNG screenshot after each completed step |
+
+### Viewing reports
+
+Open the HTML report directly in a browser:
+
+```bash
+open runs/2026-03-28_14-22-05_web_childcare/report.html
+```
+
+Replay a Playwright trace for detailed debugging:
+
+```bash
+npx playwright show-trace runs/2026-03-28_14-22-05_web_childcare/trace.zip
+```
+
+The `runs/` directory is git-ignored. Reports stay local to your machine.
+
+---
+
 ## Enrollment Steps
 
 ### Web (`--platform web`)
@@ -321,6 +368,11 @@ jumper/
 │   │   ├── petcare.ts            # Pet Care payloads
 │   │   ├── housekeeping.ts       # Housekeeping payloads
 │   │   └── tutoring.ts           # Tutoring payloads
+│   ├── recorder/
+│   │   ├── run-recorder.ts       # Core recorder — collects events, generates reports
+│   │   ├── types.ts              # Report schema (RunReport, ReportStep, etc.)
+│   │   ├── html-template.ts      # Self-contained HTML report generator
+│   │   └── truncate.ts           # Shared body truncation utility
 │   ├── steps/
 │   │   ├── web-flow.ts           # Playwright browser enrollment (web)
 │   │   ├── registry.ts           # Step pipeline (mobile)
@@ -344,10 +396,15 @@ jumper/
 │   ├── index.test.ts
 │   ├── client.test.ts
 │   ├── registry.test.ts
-│   └── verticals.test.ts
+│   ├── verticals.test.ts
+│   └── recorder/
+│       ├── run-recorder.test.ts  # RunRecorder unit tests
+│       ├── html-template.test.ts # HTML report generation tests
+│       └── truncate.test.ts      # Truncation utility tests
+├── runs/                         # Generated run artifacts (git-ignored)
 └── docs/
-    ├── specs/                    # Design spec
-    └── plans/                    # Implementation plan
+    ├── specs/                    # Design specs
+    └── plans/                    # Implementation plans
 ```
 
 ## Extending the Tool

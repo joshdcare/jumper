@@ -8,6 +8,20 @@ import { COLORS } from './theme.js';
 
 type StepStatus = 'pending' | 'running' | 'complete' | 'error';
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER_INTERVAL = 80;
+
+function useSpinner(): string {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrame(prev => (prev + 1) % SPINNER_FRAMES.length);
+    }, SPINNER_INTERVAL);
+    return () => clearInterval(timer);
+  }, []);
+  return SPINNER_FRAMES[frame];
+}
+
 interface ExecutionProps {
   emitter: RunEmitter;
   steps: readonly Step[];
@@ -29,6 +43,7 @@ export function Execution({
   onCreateAnother, onNewConfig,
 }: ExecutionProps): React.ReactElement {
   const { exit } = useApp();
+  const spinnerChar = useSpinner();
   const [stepStatuses, setStepStatuses] = useState<Map<string, StepStatus>>(
     () => new Map(steps.map(s => [s, 'pending']))
   );
@@ -184,7 +199,6 @@ export function Execution({
           <Text color={COLORS.dimText} dimColor>STEPS <Text color={COLORS.dimText}>(tab to browse)</Text></Text>
           {steps.map(s => {
             const status = stepStatuses.get(s) ?? 'pending';
-            const icon = status === 'complete' ? '✓' : status === 'running' ? '▸' : status === 'error' ? '✗' : '○';
             const isViewing = viewingStep === s;
             const color = isViewing ? COLORS.banner
               : status === 'complete' ? COLORS.stepComplete
@@ -192,9 +206,13 @@ export function Execution({
               : status === 'error' ? COLORS.stepError
               : COLORS.stepPending;
             const stepLogs = logsByStepRef.current.get(s)?.length ?? 0;
+            const icon = status === 'complete' ? '✓'
+              : status === 'running' ? spinnerChar
+              : status === 'error' ? '✗'
+              : isViewing ? '►' : '○';
             return (
               <Text key={s} color={color} bold={isViewing}>
-                {isViewing ? '►' : icon} {s}{stepLogs > 0 ? ` (${stepLogs})` : ''}
+                {icon} {s}{stepLogs > 0 ? ` (${stepLogs})` : ''}
               </Text>
             );
           })}
@@ -217,11 +235,14 @@ export function Execution({
               <Text color={COLORS.stepComplete} bold>All done! {completedCount}/{steps.length} steps · {elapsedStr}</Text>
               <Text color={COLORS.dimText}>{platform} · {verticals.join(', ')} · {tier} · {env}</Text>
 
-              {Object.keys(context).filter(k => !k.startsWith('_')).length > 0 && (
+              {context.email && (
                 <Box marginTop={1} flexDirection="column">
-                  {Object.entries(context).filter(([k]) => !k.startsWith('_')).map(([k, v]) => (
-                    <Text key={k}>  <Text color={COLORS.dimText}>{k}:</Text> <Text color={COLORS.contextValue}>{v}</Text></Text>
-                  ))}
+                  <Text color={COLORS.stepComplete} bold>Created User</Text>
+                  <Text>  <Text color={COLORS.dimText}>Email:</Text>     <Text color={COLORS.contextValue} bold>{context.email}</Text></Text>
+                  {context.password && <Text>  <Text color={COLORS.dimText}>Password:</Text>  <Text color={COLORS.contextValue} bold>{context.password}</Text></Text>}
+                  {context.memberId && <Text>  <Text color={COLORS.dimText}>MemberId:</Text>  <Text color={COLORS.contextValue} bold>{context.memberId}</Text></Text>}
+                  {context.uuid && <Text>  <Text color={COLORS.dimText}>UUID:</Text>      <Text color={COLORS.contextValue} bold>{context.uuid}</Text></Text>}
+                  {context.vertical && <Text>  <Text color={COLORS.dimText}>Vertical:</Text>  <Text color={COLORS.contextValue}>{context.vertical}</Text></Text>}
                 </Box>
               )}
 
@@ -236,7 +257,9 @@ export function Execution({
             </Box>
           ) : (
             <Box flexDirection="column">
-              <Text color={COLORS.stepRunning} bold>{viewLabel}</Text>
+              <Text color={COLORS.stepRunning} bold>
+                {stepStatuses.get(viewingStep) === 'running' ? `${spinnerChar} ` : ''}{viewLabel}
+              </Text>
               <Text color={COLORS.dimText}>
                 {viewingStep === '_all' ? 'Showing all logs' : STEP_DESCRIPTIONS[viewingStep as Step] ?? ''}
               </Text>
@@ -267,7 +290,7 @@ export function Execution({
         {done ? (
           <Text color={COLORS.stepComplete}>✓ {completedCount}/{steps.length} steps</Text>
         ) : (
-          <Text color={COLORS.stepComplete}>● {env}</Text>
+          <Text color={COLORS.stepRunning}>{spinnerChar} {currentStep}</Text>
         )}
         <Box flexGrow={1} />
         {done ? (
