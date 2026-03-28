@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import type { RunEmitter, RunEvent } from './emitter.js';
 import type { Step, Platform, Tier, Vertical } from '../types.js';
@@ -11,15 +11,31 @@ type StepStatus = 'pending' | 'running' | 'complete' | 'error';
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SPINNER_INTERVAL = 80;
 
-function useSpinner(): string {
+function useSpinner(active: boolean): string {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
+    if (!active) return;
     const timer = setInterval(() => {
       setFrame(prev => (prev + 1) % SPINNER_FRAMES.length);
     }, SPINNER_INTERVAL);
     return () => clearInterval(timer);
-  }, []);
-  return SPINNER_FRAMES[frame];
+  }, [active]);
+  return active ? SPINNER_FRAMES[frame] : '⠋';
+}
+
+function eventToLine(event: RunEvent): string | null {
+  switch (event.type) {
+    case 'step-start': return `▸ ${event.step}`;
+    case 'step-complete': return `✓ ${event.step}`;
+    case 'step-error': return `✗ ${event.step}: ${event.error}`;
+    case 'network-request': return `→ ${event.method} ${event.url}`;
+    case 'network-response': return `← ${event.status} (${event.duration}ms)`;
+    case 'field-fill': return `⌨ ${event.field}`;
+    case 'button-click': return `🖱 ${event.label}`;
+    case 'navigation': return `🔗 ${event.url}`;
+    case 'info': return event.message;
+    default: return null;
+  }
 }
 
 interface ExecutionProps {
@@ -43,7 +59,6 @@ export function Execution({
   onCreateAnother, onNewConfig,
 }: ExecutionProps): React.ReactElement {
   const { exit } = useApp();
-  const spinnerChar = useSpinner();
   const [stepStatuses, setStepStatuses] = useState<Map<string, StepStatus>>(
     () => new Map(steps.map(s => [s, 'pending']))
   );
@@ -59,16 +74,30 @@ export function Execution({
   const [menuIndex, setMenuIndex] = useState(0);
   const [startTime] = useState(Date.now());
 
+  const spinnerChar = useSpinner(!done && !waiting && !logsExpanded);
+
   const logsByStepRef = useRef<Map<string, LogEntry[]>>(new Map([['_all', []]]));
   const activeStepRef = useRef<string>(steps[0]);
+  const logsExpandedRef = useRef(logsExpanded);
+  logsExpandedRef.current = logsExpanded;
   const [logVersion, setLogVersion] = useState(0);
+  const logFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (logsExpanded) return;
     const timer = setInterval(() => setElapsed(Date.now() - startTime), 1000);
     return () => clearInterval(timer);
-  }, [startTime]);
+  }, [startTime, logsExpanded]);
 
   useEffect(() => {
+    const scheduleLogFlush = () => {
+      if (logFlushRef.current) return;
+      logFlushRef.current = setTimeout(() => {
+        logFlushRef.current = null;
+        setLogVersion(v => v + 1);
+      }, logsExpandedRef.current ? 500 : 0);
+    };
+
     const addEntry = (event: RunEvent) => {
       const entry: LogEntry = { event, timestamp: Date.now() };
       const map = logsByStepRef.current;
@@ -76,11 +105,7 @@ export function Execution({
       const step = activeStepRef.current;
       if (!map.has(step)) map.set(step, []);
       map.get(step)!.push(entry);
-      setLogVersion(v => v + 1);
-    };
-
-    const addLine = (line: string) => {
-      setRecentLines(prev => [...prev.slice(-2), line]);
+      scheduleLogFlush();
     };
 
     const handler = (event: RunEvent) => {
@@ -89,36 +114,33 @@ export function Execution({
         setCurrentStep(event.step);
         setViewingStep(event.step);
         setStepStatuses(prev => new Map(prev).set(event.step, 'running'));
-        addLine(`▸ ${event.step}`);
       } else if (event.type === 'step-complete') {
         setStepStatuses(prev => new Map(prev).set(event.step, 'complete'));
-        addLine(`✓ ${event.step}`);
         if (executionMode === 'step-through') setWaiting(true);
       } else if (event.type === 'step-error') {
         setStepStatuses(prev => new Map(prev).set(event.step, 'error'));
-        addLine(`✗ ${event.step}: ${event.error}`);
         setWaiting(true);
       } else if (event.type === 'context-update') {
         setContext(prev => ({ ...prev, [event.key]: event.value }));
       } else if (event.type === 'run-complete') {
         setDone(true);
-      } else if (event.type === 'network-request') {
-        addLine(`→ ${event.method} ${event.url}`);
-      } else if (event.type === 'network-response') {
-        addLine(`← ${event.status} (${event.duration}ms)`);
-      } else if (event.type === 'field-fill') {
-        addLine(`⌨ ${event.field}`);
-      } else if (event.type === 'button-click') {
-        addLine(`🖱 ${event.label}`);
-      } else if (event.type === 'navigation') {
-        addLine(`🔗 ${event.url}`);
-      } else if (event.type === 'info') {
-        addLine(event.message);
       }
+
+      if (!logsExpandedRef.current) {
+        const line = eventToLine(event);
+        if (line) setRecentLines(prev => [...prev.slice(-2), line]);
+      }
+
       addEntry(event);
     };
     emitter.on('event', handler);
-    return () => { emitter.off('event', handler); };
+    return () => {
+      emitter.off('event', handler);
+      if (logFlushRef.current) {
+        clearTimeout(logFlushRef.current);
+        logFlushRef.current = null;
+      }
+    };
   }, [emitter, executionMode]);
 
   const menuItems = ['Create another (same settings)', 'New configuration', 'Quit'] as const;
@@ -134,7 +156,14 @@ export function Execution({
           else { onQuit(); exit(); }
         }
       }
-      if (input === 'l') setLogsExpanded(prev => !prev);
+      if (input === 'l') {
+        if (!logsExpanded && logFlushRef.current) {
+          clearTimeout(logFlushRef.current);
+          logFlushRef.current = null;
+          setLogVersion(v => v + 1);
+        }
+        setLogsExpanded(prev => !prev);
+      }
       if (input === 'd') setDetailMode(prev => !prev);
       if (input === 'q') { onQuit(); exit(); }
       if (key.escape && logsExpanded) setLogsExpanded(false);
@@ -150,7 +179,14 @@ export function Execution({
       return;
     }
     if (input === 'd') setDetailMode(prev => !prev);
-    if (input === 'l') setLogsExpanded(prev => !prev);
+    if (input === 'l') {
+      if (!logsExpanded && logFlushRef.current) {
+        clearTimeout(logFlushRef.current);
+        logFlushRef.current = null;
+        setLogVersion(v => v + 1);
+      }
+      setLogsExpanded(prev => !prev);
+    }
     if (input === 'q') { onQuit(); exit(); }
     if (input === 'r' && waiting) { setWaiting(false); onRetry(); }
     if (key.return && waiting) { setWaiting(false); onStepContinue(); }
@@ -173,9 +209,12 @@ export function Execution({
   });
 
   const totalLogs = logsByStepRef.current.get('_all')?.length ?? 0;
-  const viewingEntries = (viewingStep === '_all'
-    ? logsByStepRef.current.get('_all')
-    : logsByStepRef.current.get(viewingStep)) ?? [];
+  const viewingEntries = useMemo(() => {
+    void logVersion;
+    return (viewingStep === '_all'
+      ? logsByStepRef.current.get('_all')
+      : logsByStepRef.current.get(viewingStep)) ?? [];
+  }, [logVersion, viewingStep]);
   const completedCount = Array.from(stepStatuses.values()).filter(s => s === 'complete').length;
   const elapsedStr = `${Math.floor(elapsed / 1000)}s`;
   const viewLabel = viewingStep === '_all' ? 'All steps' : viewingStep;

@@ -133,6 +133,10 @@ export async function createAccountMobile(
   }
 
   ctx.memberId = String(upgradeResult.data?.enrollment?.memberId ?? ctx.memberId);
+  ctx.addressLine1 = payloads.p2pStripeAccountInput.addressLine1;
+  ctx.city = payloads.p2pStripeAccountInput.city;
+  ctx.state = payloads.p2pStripeAccountInput.state;
+  ctx.zip = payloads.providerCreateDefaults.zipcode;
 
   if (envConfig?.db.password) {
     try {

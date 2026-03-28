@@ -36,7 +36,7 @@ function isSystemEvent(e: RunEvent): boolean {
   return e.type === 'info' || e.type === 'auth' || e.type === 'db-query';
 }
 
-export function LogPanel({ entries, detailMode }: LogPanelProps): React.ReactElement {
+export const LogPanel = React.memo(function LogPanel({ entries, detailMode }: LogPanelProps): React.ReactElement {
   const [filters, setFilters] = useState<LogFilters>({
     browser: true, network: true, navigation: true, system: true,
   });
@@ -90,7 +90,7 @@ export function LogPanel({ entries, detailMode }: LogPanelProps): React.ReactEle
       ))}
     </Box>
   );
-}
+});
 
 function LogLine({ entry, detailMode }: { entry: LogEntry; detailMode: boolean }): React.ReactElement {
   const { event } = entry;

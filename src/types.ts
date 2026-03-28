@@ -74,6 +74,10 @@ export interface ProviderContext {
   accessToken?: string;
   tier: Tier;
   vertical: string;
+  addressLine1?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   _eligibilityResponse?: any;
 }
 
