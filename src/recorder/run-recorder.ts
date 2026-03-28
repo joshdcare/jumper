@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { BrowserContext, Page, Browser } from 'playwright';
 import type { RunEmitter, RunEvent } from '../tui/emitter.js';
 import type {
   ReportContext,
@@ -39,6 +40,8 @@ export class RunRecorder {
   private readonly steps: ReportStep[] = [];
   private readonly errors: ReportError[] = [];
 
+  private browserContext?: BrowserContext;
+  private browser?: Browser;
   private currentStep: ActiveStep | null = null;
   private pendingRequests = new Map<string, PendingRequest>();
   private finished = false;
@@ -73,12 +76,53 @@ export class RunRecorder {
     });
   }
 
+  playwrightContextOptions(): { recordVideo: { dir: string } } {
+    return { recordVideo: { dir: this.runDir } };
+  }
+
+  async startTrace(context: BrowserContext, browser: Browser): Promise<void> {
+    this.browserContext = context;
+    this.browser = browser;
+    await context.tracing.start({ screenshots: true, snapshots: true });
+  }
+
+  async screenshot(page: Page, stepName: string, index: number): Promise<void> {
+    try {
+      const filename = `${String(index).padStart(2, '0')}_${stepName}.png`;
+      const filepath = path.join(this.runDir, 'screenshots', filename);
+      await page.screenshot({ path: filepath });
+
+      const lastMatch = [...this.steps].reverse().find(s => s.name === stepName);
+      if (lastMatch) {
+        lastMatch.screenshot = `screenshots/${filename}`;
+      }
+    } catch (err) {
+      console.warn(`⚠️  Screenshot failed for step "${stepName}":`, err);
+    }
+  }
+
   async finish(ctx: Record<string, any>): Promise<RunReport> {
     if (this.finished && this.cachedReport) {
       return this.cachedReport;
     }
 
     this.finished = true;
+
+    if (this.browserContext) {
+      try {
+        await this.browserContext.tracing.stop({ path: path.join(this.runDir, 'trace.zip') });
+      } catch { /* browser already closed */ }
+      try {
+        await this.browserContext.close();
+      } catch { /* already closed */ }
+      try {
+        await this.browser!.close();
+      } catch { /* already closed */ }
+      const webms = fs.readdirSync(this.runDir).filter(f => f.endsWith('.webm'));
+      if (webms.length > 0) {
+        fs.renameSync(path.join(this.runDir, webms[0]), path.join(this.runDir, 'video.webm'));
+      }
+    }
 
     const context: ReportContext = {
       email: ctx.email,
