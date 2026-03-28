@@ -4,3 +4,5 @@ dist/
 .superpowers/
 *.csv
 .worktrees/
+runs/
+test-runs-tmp/
