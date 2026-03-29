@@ -10,6 +10,7 @@ import { getStepsUpTo } from './steps/registry.js';
 import { VERTICAL_REGISTRY } from './verticals.js';
 import { RunEmitter, consoleAdapter } from './tui/emitter.js';
 import { RunRecorder } from './recorder/run-recorder.js';
+import type { WebFlowResult } from './steps/web-flow.js';
 
 const BANNER = 'QA Provider Factory — create test providers at enrollment checkpoints.';
 
@@ -147,17 +148,27 @@ async function runWebFlow(opts: CliOptions, envConfig: typeof ENV_CONFIGS[string
   const payloads = await loadPayloads(opts.vertical);
   console.log(`\nStarting web enrollment → ${opts.step} (${opts.vertical})\n`);
 
-  let webResult: Awaited<ReturnType<typeof runWebEnrollmentFlow>> | undefined;
+  let webResult: WebFlowResult | undefined;
   try {
-    webResult = await runWebEnrollmentFlow(
+    const { result, monitoring } = await runWebEnrollmentFlow(
       opts.step, opts.tier as Tier, envConfig, verticalConfig,
       payloads.providerCreateDefaults.serviceType, opts.autoClose,
       emitter, undefined, recorder,
     );
+    webResult = result;
+    await recorder.finish({
+      email: webResult.email,
+      password: webResult.password,
+      memberId: webResult.memberId,
+      vertical: webResult.vertical,
+    });
+    if (monitoring) {
+      console.log('  Monitoring browser activity... Close the browser to exit.\n');
+      await monitoring;
+    }
   } catch (err) {
     recorder.recordError('web-flow', err as Error);
     console.error(`\nWeb flow error: ${(err as Error).message}`);
-  } finally {
     await recorder.finish({
       email: webResult?.email ?? '',
       password: webResult?.password ?? '',
