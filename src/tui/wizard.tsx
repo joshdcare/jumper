@@ -65,7 +65,7 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
   const [step, setStep] = useState<Step>('at-location');
   const [tier, setTier] = useState<Tier>('premium');
   const [count, setCount] = useState('1');
-  const [autoClose] = useState(true);
+  const [autoClose] = useState(false);
   const [env] = useState('dev');
   const [highlightedStep, setHighlightedStep] = useState<Step | null>(null);
 

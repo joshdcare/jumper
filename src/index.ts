@@ -44,7 +44,7 @@ function createEnrollmentCommand(): Command {
     )
     .option('--platform <platform>', 'Target platform (web, mobile)', 'web')
     .option('--env <env>', 'Target environment', 'dev')
-    .option('--no-auto-close', 'Keep browser open after logging credentials (web only)')
+    .option('--auto-close', 'Close browser automatically after completion (web only)')
     .addHelpText('after', `
 Steps by platform:
 

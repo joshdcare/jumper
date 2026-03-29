@@ -4,7 +4,7 @@ A CLI + TUI tool for the PEXP team that navigates provider enrollment to specifi
 
 Supports **five verticals**: Child Care, Senior Care, Pet Care, Housekeeping, and Tutoring.
 
-- **Web**: Opens a real Chromium browser and drives through enrollment pages, stopping at the target page. The browser auto-closes after logging credentials; pass `--no-auto-close` to keep it open for manual testing.
+- **Web**: Opens a real Chromium browser and drives through enrollment pages, stopping at the target page. The browser stays open after logging credentials so you can continue testing; pass `--auto-close` to close it automatically.
 - **Mobile**: Uses API calls to create an account at a specific enrollment state.
 
 Every run (CLI and TUI) is automatically recorded to `runs/` with a structured JSON report, an HTML report, and — for web flows — a video recording, Playwright trace, and per-step screenshots.
@@ -165,7 +165,7 @@ Logs remain accessible on the completion screen via `l`, `tab`, and `a`.
 For scripting or when you already know exactly what you want:
 
 ```bash
-jumper --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical childcare] [--env dev] [--no-auto-close]
+jumper --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical childcare] [--env dev] [--auto-close]
 ```
 
 | Flag | Default | Description |
@@ -175,7 +175,7 @@ jumper --step <step> [--platform web|mobile] [--tier basic|premium] [--vertical 
 | `--tier` | `premium` | Subscription tier — `basic` or `premium` |
 | `--vertical` | `childcare` | Service vertical — `childcare`, `seniorcare`, `petcare`, `housekeeping`, `tutoring` |
 | `--env` | `dev` | Target environment |
-| `--no-auto-close` | *(off)* | Keep the browser open after logging credentials (web only) |
+| `--auto-close` | *(off)* | Close the browser automatically after completion (web only) |
 
 ### Examples
 
@@ -250,7 +250,7 @@ The `runs/` directory is git-ignored. Reports stay local to your machine.
 
 ### Web (`--platform web`)
 
-Web drives a real Chromium browser through the enrollment flow. The browser auto-closes after logging credentials. Use `--no-auto-close` to keep it open for manual testing.
+Web drives a real Chromium browser through the enrollment flow. The browser stays open after logging credentials so you can continue testing. Use `--auto-close` to close it automatically.
 
 | Step | Page URL |
 |------|----------|
