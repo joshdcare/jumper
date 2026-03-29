@@ -34,6 +34,7 @@ async function runWebExecution(
   envConfig: EnvConfig,
   emitter: RunEmitter,
   continueRef: React.MutableRefObject<(() => void) | null>,
+  monitoringAbortRef: React.MutableRefObject<(() => void) | null>,
 ): Promise<void> {
   const { runWebEnrollmentFlow } = await import('../steps/web-flow.js');
 
@@ -58,7 +59,7 @@ async function runWebExecution(
           : undefined;
 
       try {
-        await runWebEnrollmentFlow(
+        const { result: flowResult, monitoring } = await runWebEnrollmentFlow(
           result.step,
           result.tier,
           envConfig,
@@ -69,11 +70,25 @@ async function runWebExecution(
           onStepComplete,
           recorder,
         );
+        await recorder.finish({
+          email: flowResult.email,
+          password: flowResult.password,
+          memberId: flowResult.memberId,
+          vertical: flowResult.vertical,
+        });
+
+        if (monitoring) {
+          emitter.monitoringStart();
+          const abortPromise = new Promise<void>(resolve => {
+            monitoringAbortRef.current = resolve;
+          });
+          await Promise.race([monitoring, abortPromise]);
+          monitoringAbortRef.current = null;
+        }
       } catch (err) {
         recorder.recordError('web-flow', err as Error);
-        throw err;
-      } finally {
         await recorder.finish({ email: '', password: '' });
+        throw err;
       }
 
       emitter.contextUpdate('vertical', vertical);
@@ -164,6 +179,7 @@ async function runExecution(
   envConfig: EnvConfig,
   emitter: RunEmitter,
   continueRef: React.MutableRefObject<(() => void) | null>,
+  monitoringAbortRef: React.MutableRefObject<(() => void) | null>,
 ): Promise<void> {
   const originalLog = console.log;
   const originalError = console.error;
@@ -172,7 +188,7 @@ async function runExecution(
 
   try {
     if (result.platform === 'web') {
-      await runWebExecution(result, envConfig, emitter, continueRef);
+      await runWebExecution(result, envConfig, emitter, continueRef, monitoringAbortRef);
     } else {
       await runMobileExecution(result, envConfig, emitter, continueRef);
     }
@@ -192,6 +208,7 @@ export function App(): React.ReactElement {
   const [key, setKey] = useState(0);
   const emitterRef = useRef<RunEmitter>(new RunEmitter());
   const continueRef = useRef<(() => void) | null>(null);
+  const monitoringAbortRef = useRef<(() => void) | null>(null);
 
   const startRun = useCallback((result: WizardResult) => {
     const emitter = new RunEmitter();
@@ -203,7 +220,7 @@ export function App(): React.ReactElement {
     setKey(++runId);
 
     setTimeout(() => {
-      runExecution(result, envConfig, emitter, continueRef);
+      runExecution(result, envConfig, emitter, continueRef, monitoringAbortRef);
     }, 100);
   }, []);
 
@@ -250,6 +267,7 @@ export function App(): React.ReactElement {
       env={config.env}
       executionMode={config.executionMode}
       onStepContinue={handleStepContinue}
+      onAbortMonitoring={() => { monitoringAbortRef.current?.(); }}
       onRetry={handleRetry}
       onQuit={handleQuit}
       onCreateAnother={handleCreateAnother}
