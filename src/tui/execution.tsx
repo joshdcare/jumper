@@ -52,12 +52,13 @@ interface ExecutionProps {
   onQuit: () => void;
   onCreateAnother: () => void;
   onNewConfig: () => void;
+  onAbortMonitoring: () => void;
 }
 
 export function Execution({
   emitter, steps, platform, verticals, tier, env,
   executionMode, onStepContinue, onRetry, onQuit,
-  onCreateAnother, onNewConfig,
+  onCreateAnother, onNewConfig, onAbortMonitoring,
 }: ExecutionProps): React.ReactElement {
   const { exit } = useApp();
   const [stepStatuses, setStepStatuses] = useState<Map<string, StepStatus>>(
@@ -68,6 +69,7 @@ export function Execution({
   const [detailMode, setDetailMode] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [monitoring, setMonitoring] = useState(false);
   const [done, setDone] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [context, setContext] = useState<Record<string, string>>({});
@@ -81,8 +83,12 @@ export function Execution({
   const activeStepRef = useRef<string>(steps[0]);
   const logsExpandedRef = useRef(logsExpanded);
   logsExpandedRef.current = logsExpanded;
+
+  const monitoringRef = useRef(monitoring);
+  monitoringRef.current = monitoring;
+
+  const quitRequestedRef = useRef(false);
   const [logVersion, setLogVersion] = useState(0);
-  const logFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (logsExpanded) return;
@@ -91,14 +97,6 @@ export function Execution({
   }, [startTime, logsExpanded]);
 
   useEffect(() => {
-    const scheduleLogFlush = () => {
-      if (logFlushRef.current) return;
-      logFlushRef.current = setTimeout(() => {
-        logFlushRef.current = null;
-        setLogVersion(v => v + 1);
-      }, logsExpandedRef.current ? 500 : 0);
-    };
-
     const addEntry = (event: RunEvent) => {
       const entry: LogEntry = { event, timestamp: Date.now() };
       const map = logsByStepRef.current;
@@ -106,7 +104,9 @@ export function Execution({
       const step = activeStepRef.current;
       if (!map.has(step)) map.set(step, []);
       map.get(step)!.push(entry);
-      scheduleLogFlush();
+      if (!logsExpandedRef.current || monitoringRef.current) {
+        setLogVersion(v => v + 1);
+      }
     };
 
     const handler = (event: RunEvent) => {
@@ -123,11 +123,16 @@ export function Execution({
         setWaiting(true);
       } else if (event.type === 'context-update') {
         setContext(prev => ({ ...prev, [event.key]: event.value }));
+      } else if (event.type === 'monitoring-start') {
+        setMonitoring(true);
       } else if (event.type === 'run-complete') {
         setDone(true);
+        if (quitRequestedRef.current) {
+          setTimeout(() => { onQuit(); exit(); }, 0);
+        }
       }
 
-      if (!logsExpandedRef.current) {
+      if (!logsExpandedRef.current || monitoringRef.current) {
         const line = eventToLine(event);
         if (line) setRecentLines(prev => [...prev.slice(-2), line]);
       }
@@ -135,13 +140,7 @@ export function Execution({
       addEntry(event);
     };
     emitter.on('event', handler);
-    return () => {
-      emitter.off('event', handler);
-      if (logFlushRef.current) {
-        clearTimeout(logFlushRef.current);
-        logFlushRef.current = null;
-      }
-    };
+    return () => { emitter.off('event', handler); };
   }, [emitter, executionMode]);
 
   const menuItems = ['Create another (same settings)', 'New configuration', 'Quit'] as const;
@@ -158,11 +157,7 @@ export function Execution({
         }
       }
       if (input === 'l') {
-        if (!logsExpanded && logFlushRef.current) {
-          clearTimeout(logFlushRef.current);
-          logFlushRef.current = null;
-          setLogVersion(v => v + 1);
-        }
+        setLogVersion(v => v + 1);
         setLogsExpanded(prev => !prev);
       }
       if (input === 'd') setDetailMode(prev => !prev);
@@ -181,14 +176,18 @@ export function Execution({
     }
     if (input === 'd') setDetailMode(prev => !prev);
     if (input === 'l') {
-      if (!logsExpanded && logFlushRef.current) {
-        clearTimeout(logFlushRef.current);
-        logFlushRef.current = null;
-        setLogVersion(v => v + 1);
-      }
+      setLogVersion(v => v + 1);
       setLogsExpanded(prev => !prev);
     }
-    if (input === 'q') { onQuit(); exit(); }
+    if (input === 'q') {
+      if (monitoring) {
+        quitRequestedRef.current = true;
+        onAbortMonitoring();
+        return;
+      }
+      onQuit();
+      exit();
+    }
     if (input === 'r' && waiting) { setWaiting(false); onRetry(); }
     if (key.return && waiting) { setWaiting(false); onStepContinue(); }
     if (key.escape) {
@@ -295,6 +294,37 @@ export function Execution({
                 ))}
               </Box>
             </Box>
+          ) : monitoring ? (
+            <Box flexDirection="column">
+              <Text color={COLORS.stepRunning} bold>
+                {spinnerChar} Monitoring browser...
+              </Text>
+              <Text color={COLORS.dimText}>
+                Navigate the browser — activity appears in the logs below.
+              </Text>
+              <Text color={COLORS.dimText}>
+                Close the browser or press q to finish.
+              </Text>
+
+              {context.email && (
+                <Box marginTop={1} flexDirection="column">
+                  <Text color={COLORS.stepComplete} bold>Created User</Text>
+                  <Text>  <Text color={COLORS.dimText}>Email:</Text>     <Text color={COLORS.contextValue} bold>{context.email}</Text></Text>
+                  {context.password && <Text>  <Text color={COLORS.dimText}>Password:</Text>  <Text color={COLORS.contextValue} bold>{context.password}</Text></Text>}
+                  {context.memberId && <Text>  <Text color={COLORS.dimText}>MemberId:</Text>  <Text color={COLORS.contextValue} bold>{context.memberId}</Text></Text>}
+                  {context.uuid && <Text>  <Text color={COLORS.dimText}>UUID:</Text>      <Text color={COLORS.contextValue} bold>{context.uuid}</Text></Text>}
+                  {context.vertical && <Text>  <Text color={COLORS.dimText}>Vertical:</Text>  <Text color={COLORS.contextValue}>{context.vertical}</Text></Text>}
+                </Box>
+              )}
+
+              {!logsExpanded && recentLines.length > 0 && (
+                <Box marginTop={1} flexDirection="column">
+                  {recentLines.map((line, i) => (
+                    <Text key={i} color={i === recentLines.length - 1 ? COLORS.systemEvent : COLORS.dimText}>{line}</Text>
+                  ))}
+                </Box>
+              )}
+            </Box>
           ) : (
             <Box flexDirection="column">
               <Text color={COLORS.stepRunning} bold>
@@ -329,12 +359,16 @@ export function Execution({
       <Box borderStyle="single" borderColor={COLORS.chrome} paddingX={1}>
         {done ? (
           <Text color={COLORS.stepComplete}>✓ {completedCount}/{steps.length} steps</Text>
+        ) : monitoring ? (
+          <Text color={COLORS.stepRunning}>{spinnerChar} Monitoring</Text>
         ) : (
           <Text color={COLORS.stepRunning}>{spinnerChar} {currentStep}</Text>
         )}
         <Box flexGrow={1} />
         {done ? (
           <Text color={COLORS.dimText}>↑↓ select · enter: confirm · l: logs · tab: browse steps · q: quit</Text>
+        ) : monitoring ? (
+          <Text color={COLORS.dimText}>l: {logsExpanded ? 'hide' : 'show'} logs{logsExpanded ? ' · d: detail' : ''} · tab: browse steps · q: finish</Text>
         ) : waiting ? (
           <Text color={COLORS.stepRunning}>
             {stepStatuses.get(currentStep) === 'error' ? 'r: retry · q: quit' : 'enter: continue'}
