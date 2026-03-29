@@ -34,6 +34,7 @@ function eventToLine(event: RunEvent): string | null {
     case 'button-click': return `🖱 ${event.label}`;
     case 'navigation': return `🔗 ${event.url}`;
     case 'info': return event.message;
+    case 'monitoring-start': return '👁 Monitoring browser...';
     default: return null;
   }
 }

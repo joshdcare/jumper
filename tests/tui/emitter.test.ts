@@ -33,6 +33,14 @@ describe('RunEmitter', () => {
     expect(received[0].type).toBe('network-request');
     expect(received[1].type).toBe('network-response');
   });
+
+  it('emits monitoring-start event', () => {
+    const emitter = new RunEmitter();
+    const events: RunEvent[] = [];
+    emitter.on('event', (e: RunEvent) => events.push(e));
+    emitter.monitoringStart();
+    expect(events).toEqual([{ type: 'monitoring-start' }]);
+  });
 });
 
 describe('consoleAdapter', () => {

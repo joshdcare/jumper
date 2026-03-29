@@ -14,6 +14,7 @@ export type RunEvent =
   | { type: 'db-query'; query: string }
   | { type: 'info'; message: string }
   | { type: 'context-update'; key: string; value: string }
+  | { type: 'monitoring-start' }
   | { type: 'run-complete' };
 
 export class RunEmitter extends EventEmitter {
@@ -71,6 +72,10 @@ export class RunEmitter extends EventEmitter {
 
   contextUpdate(key: string, value: string): void {
     this._emit({ type: 'context-update', key, value });
+  }
+
+  monitoringStart(): void {
+    this._emit({ type: 'monitoring-start' });
   }
 
   runComplete(): void {
