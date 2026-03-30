@@ -151,10 +151,14 @@ async function runMobileExecution(
 
           if (stepDef.name === 'account-created' && ctx.email) {
             emitter.auth('Obtaining access token...');
-            const accessToken = await getAccessToken(ctx.email, envConfig);
-            ctx.accessToken = accessToken;
-            client.setAccessToken(accessToken);
-            emitter.auth('Access token acquired');
+            try {
+              const accessToken = await getAccessToken(ctx.email, envConfig);
+              ctx.accessToken = accessToken;
+              client.setAccessToken(accessToken);
+              emitter.auth('Access token acquired');
+            } catch {
+              emitter.auth('⚠ Access token unavailable — GraphQL steps will be skipped');
+            }
           }
 
           if (result.executionMode === 'step-through') {

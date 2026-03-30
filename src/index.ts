@@ -239,9 +239,13 @@ async function runMobileFlow(opts: CliOptions, envConfig: EnvConfig): Promise<vo
     for (const step of steps) {
       if (step.name !== 'account-created' && !ctx.accessToken) {
         const authSpinner = ora('Acquiring access token…').start();
-        ctx.accessToken = await getAccessToken(ctx.email, envConfig);
-        client.setAccessToken(ctx.accessToken);
-        authSpinner.succeed('Access token acquired');
+        try {
+          ctx.accessToken = await getAccessToken(ctx.email, envConfig);
+          client.setAccessToken(ctx.accessToken);
+          authSpinner.succeed('Access token acquired');
+        } catch {
+          authSpinner.warn('Access token unavailable — GraphQL steps may fail');
+        }
       }
 
       emitter.stepStart(step.name, step.name);
