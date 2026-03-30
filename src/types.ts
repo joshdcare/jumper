@@ -48,15 +48,20 @@ export interface CliOptions {
   step: Step;
   tier: Tier;
   vertical: Vertical;
-  env: string;
+  env: Env;
   platform: Platform;
   autoClose: boolean;
 }
+
+export const ALL_ENVS = ['dev', 'stg'] as const;
+export type Env = (typeof ALL_ENVS)[number];
 
 export interface EnvConfig {
   baseUrl: string;
   apiKey: string;
   sterlingCallbackUrl: string;
+  auth0Authority: string;
+  auth0ClientId: string;
   db: {
     host: string;
     user: string;
@@ -89,16 +94,37 @@ export interface ProviderResult {
   vertical: string;
 }
 
-export const ENV_CONFIGS: Record<string, EnvConfig> = {
+export const LD_ENV_MAP: Record<Env, string> = {
+  dev: 'development',
+  stg: 'stage',
+};
+
+export const ENV_CONFIGS: Record<Env, EnvConfig> = {
   dev: {
     baseUrl: 'https://www.dev.carezen.net',
     apiKey: process.env.CZEN_API_KEY ?? '',
     sterlingCallbackUrl:
       'https://safety-background-check.useast1.dev.omni.carezen.net',
+    auth0Authority: 'https://login.dev.carezen.net',
+    auth0ClientId: 'RtFw57ig6jKyP1efQdBB7HefNgUx044L',
     db: {
       host: 'dev-czendb-ro.use.dom.carezen.net',
       user: 'readOnly',
       password: process.env.MYSQL_DB_PASS_DEV ?? '',
+      database: 'czen',
+    },
+  },
+  stg: {
+    baseUrl: 'https://www.stg.carezen.net',
+    apiKey: process.env.CZEN_API_KEY ?? '',
+    sterlingCallbackUrl:
+      'https://safety-background-check.useast1.stg.omni.carezen.net',
+    auth0Authority: 'https://login.stg.carezen.net',
+    auth0ClientId: 'RtFw57ig6jKyP1efQdBB7HefNgUx044L',
+    db: {
+      host: 'stg-czendb-ro.use.dom.carezen.net',
+      user: 'readOnly',
+      password: process.env.MYSQL_DB_PASS_STG ?? '',
       database: 'czen',
     },
   },
