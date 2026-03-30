@@ -218,8 +218,17 @@ export async function runWebEnrollmentFlow(
     emitter?.stepStart('at-vertical-selection', STEP_DESCRIPTIONS['at-vertical-selection']);
     if (!skippedSoftIntro) {
       await clickEnabledButton(page, /next/i);
-      await page.waitForURL('**/vertical-triage**');
+      await page.waitForURL(
+        url => url.pathname.includes('/vertical-triage') || url.pathname.includes('/steps-to-begin'),
+        { timeout: 15_000 },
+      );
       await waitForPageReady(page);
+
+      if (page.url().includes('/steps-to-begin')) {
+        await clickEnabledButton(page, /next|continue|get started/i);
+        await page.waitForURL('**/vertical-triage**');
+        await waitForPageReady(page);
+      }
     }
     console.log('  ✓ at-vertical-selection');
     emitter?.stepComplete('at-vertical-selection');
