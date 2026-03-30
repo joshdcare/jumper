@@ -1,4 +1,7 @@
-import { chromium, type Page, type Browser } from 'playwright';
+import { chromium, type Page, type Browser, type BrowserContext } from 'playwright';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { nanoid } from 'nanoid';
 import type { EnvConfig, Tier } from '../types.js';
 import type { VerticalConfig } from '../verticals.js';
@@ -43,12 +46,40 @@ export async function runWebEnrollmentFlow(
   let uuid: string | undefined;
   const vertical = serviceType;
 
-  const browser = await chromium.launch({
-    headless: false,
-    args: ['--incognito'],
-  });
+  let extPath: string | undefined;
+  const amplitudeExtId = 'acehfjhnmhbmgkedjmjlobpgdicnhkbp';
+  const chromeExtBase = `${process.env.HOME}/Library/Application Support/Google/Chrome/Default/Extensions/${amplitudeExtId}`;
+  try {
+    const versions = fs.readdirSync(chromeExtBase);
+    if (versions.length > 0) {
+      extPath = `${chromeExtBase}/${versions[0]}`;
+    }
+  } catch {
+    // Extension not installed — continue without it
+  }
+
   const contextOptions = recorder?.playwrightContextOptions() ?? {};
-  const context = await browser.newContext(contextOptions);
+  let browser: Browser;
+  let context: BrowserContext;
+
+  if (extPath) {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jumper-'));
+    context = await chromium.launchPersistentContext(userDataDir, {
+      headless: false,
+      args: [
+        `--disable-extensions-except=${extPath}`,
+        `--load-extension=${extPath}`,
+      ],
+      ...contextOptions,
+    });
+    browser = context.browser()!;
+  } else {
+    browser = await chromium.launch({
+      headless: false,
+      args: ['--incognito'],
+    });
+    context = await browser.newContext(contextOptions);
+  }
   if (recorder) {
     await recorder.startTrace(context, browser);
   }
