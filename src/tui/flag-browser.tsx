@@ -3,6 +3,7 @@ import { Box, Text, useInput, useApp } from 'ink';
 import { LDClient, type LDFlag } from '../api/launchdarkly.js';
 import type { Env } from '../types.js';
 import { COLORS } from './theme.js';
+import { recordToggle, getSessionToggleCount } from './flag-session.js';
 
 export interface FlagBrowserProps {
   env: Env;
@@ -86,6 +87,7 @@ export function FlagBrowser({ env, onClose }: FlagBrowserProps): React.ReactElem
     setTogglingKey(flag.key);
     setError(null);
     try {
+      recordToggle(flag.key, flag.on, env);
       const newState = !flag.on;
       await client.toggleFlag(flag.key, env, newState);
       setTogglingKey(null);
@@ -133,7 +135,7 @@ export function FlagBrowser({ env, onClose }: FlagBrowserProps): React.ReactElem
     }
 
     if (key.return) {
-      void handleToggle();
+      if (flags.length > 0) void handleToggle();
       return;
     }
 
@@ -227,6 +229,14 @@ export function FlagBrowser({ env, onClose }: FlagBrowserProps): React.ReactElem
             );
           })}
         </Box>
+
+        {getSessionToggleCount() > 0 && (
+          <Box marginTop={1}>
+            <Text color={COLORS.dimText}>
+              Session: {getSessionToggleCount()} flag(s) changed — will revert on exit
+            </Text>
+          </Box>
+        )}
       </Box>
 
       <Box borderStyle="single" borderColor={COLORS.chrome} paddingX={1}>

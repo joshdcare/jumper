@@ -95,8 +95,8 @@ export interface ProviderResult {
 }
 
 export const LD_ENV_MAP: Record<Env, string> = {
-  dev: 'development',
-  stg: 'stage',
+  dev: 'dev',
+  stg: 'stg',
 };
 
 export const ENV_CONFIGS: Record<Env, EnvConfig> = {
@@ -116,7 +116,7 @@ export const ENV_CONFIGS: Record<Env, EnvConfig> = {
   },
   stg: {
     baseUrl: 'https://www.stg.carezen.net',
-    apiKey: process.env.CZEN_API_KEY ?? '',
+    apiKey: process.env.CZEN_API_KEY_STG ?? '',
     sterlingCallbackUrl:
       'https://safety-background-check.useast1.stg.omni.carezen.net',
     auth0Authority: 'https://login.stg.carezen.net',

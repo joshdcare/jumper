@@ -55,7 +55,7 @@ export class LDClient {
     const url = new URL(`${LD_API_BASE}/flags/${encodeURIComponent(this.projectKey)}`);
     url.searchParams.set('env', envKey);
     if (query !== '') {
-      url.searchParams.set('filter', `query~${query}`);
+      url.searchParams.set('filter', `query:${query}`);
     }
     url.searchParams.set('limit', '20');
     url.searchParams.set('sort', 'name');
@@ -93,9 +93,10 @@ export class LDClient {
     }
     const envKey = LD_ENV_MAP[ldEnv as Env];
     const url = `${LD_API_BASE}/flags/${encodeURIComponent(this.projectKey)}/${encodeURIComponent(flagKey)}`;
-    const body = JSON.stringify([
-      { op: 'replace' as const, path: `/environments/${envKey}/on`, value: newState },
-    ]);
+    const body = JSON.stringify({
+      environmentKey: envKey,
+      instructions: [{ kind: newState ? 'turnFlagOn' : 'turnFlagOff' }],
+    });
 
     const res = await fetchImpl(url, {
       method: 'PATCH',
@@ -114,4 +115,5 @@ export class LDClient {
     };
     return mapItemToFlag(item, envKey);
   }
+
 }

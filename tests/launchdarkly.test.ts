@@ -21,7 +21,6 @@ describe('LDClient', () => {
 
   describe('searchFlags', () => {
     it('returns flags with correct on state from environments', async () => {
-      const envKey = 'development';
       fetchImpl.mockResolvedValueOnce(
         mockJsonResponse({
           items: [
@@ -29,14 +28,14 @@ describe('LDClient', () => {
               key: 'flag-a',
               name: 'Flag A',
               environments: {
-                [envKey]: { on: true },
+                dev: { on: true },
               },
             },
             {
               key: 'flag-b',
               name: 'Flag B',
               environments: {
-                [envKey]: { on: false },
+                dev: { on: false },
               },
             },
           ],
@@ -54,8 +53,8 @@ describe('LDClient', () => {
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       const url = new URL(fetchImpl.mock.calls[0][0] as string);
       expect(url.origin + url.pathname).toBe(`${BASE}/flags/${PROJECT}`);
-      expect(url.searchParams.get('env')).toBe(envKey);
-      expect(url.searchParams.get('filter')).toBe('query~my-query');
+      expect(url.searchParams.get('env')).toBe('dev');
+      expect(url.searchParams.get('filter')).toBe('query:my-query');
       expect(url.searchParams.get('limit')).toBe('20');
       expect(url.searchParams.get('sort')).toBe('name');
       expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({
@@ -87,13 +86,12 @@ describe('LDClient', () => {
 
   describe('toggleFlag', () => {
     it('sends correct PATCH body and returns updated flag', async () => {
-      const envKey = 'stage';
       const flagKey = 'my-feature';
       const updated = {
         key: flagKey,
         name: 'My Feature',
         environments: {
-          [envKey]: { on: true },
+          stg: { on: true },
         },
       };
       fetchImpl.mockResolvedValueOnce(mockJsonResponse(updated));
@@ -116,9 +114,10 @@ describe('LDClient', () => {
         'Content-Type':
           'application/json; domain-model=launchdarkly.semanticpatch',
       });
-      expect(JSON.parse(init.body as string)).toEqual([
-        { op: 'replace', path: `/environments/${envKey}/on`, value: true },
-      ]);
+      expect(JSON.parse(init.body as string)).toEqual({
+        environmentKey: 'stg',
+        instructions: [{ kind: 'turnFlagOn' }],
+      });
     });
 
     it('rejects production environment and does not call fetch', async () => {
@@ -141,4 +140,5 @@ describe('LDClient', () => {
       );
     });
   });
+
 });

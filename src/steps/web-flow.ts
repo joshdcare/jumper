@@ -150,20 +150,35 @@ export async function runWebEnrollmentFlow(
     /* ── at-get-started → at-soft-intro-combined ───────────── */
     emitter?.stepStart('at-soft-intro-combined', STEP_DESCRIPTIONS['at-soft-intro-combined']);
     await page.getByText(/find jobs/i).first().click();
-    await page.waitForURL('**/provider/soft-intro-combined**');
+    await page.waitForURL(
+      url => url.pathname.includes('/soft-intro-combined') || url.pathname.includes('/vertical-triage'),
+      { timeout: 15_000 },
+    );
     await waitForPageReady(page);
-    console.log('  ✓ at-soft-intro-combined');
-    emitter?.stepComplete('at-soft-intro-combined');
-    stepIndex++;
-    await recorder?.screenshot(page, 'at-soft-intro-combined', stepIndex);
-    if (onStepComplete) await onStepComplete();
-    if (targetStep === 'at-soft-intro-combined') return await stop('at-soft-intro-combined');
+
+    const skippedSoftIntro = page.url().includes('/vertical-triage');
+
+    if (skippedSoftIntro) {
+      console.log('  ✓ at-soft-intro-combined (skipped — not present in this environment)');
+      emitter?.stepComplete('at-soft-intro-combined');
+      stepIndex++;
+      if (targetStep === 'at-soft-intro-combined') return await stop('at-soft-intro-combined');
+    } else {
+      console.log('  ✓ at-soft-intro-combined');
+      emitter?.stepComplete('at-soft-intro-combined');
+      stepIndex++;
+      await recorder?.screenshot(page, 'at-soft-intro-combined', stepIndex);
+      if (onStepComplete) await onStepComplete();
+      if (targetStep === 'at-soft-intro-combined') return await stop('at-soft-intro-combined');
+    }
 
     /* ── at-soft-intro-combined → at-vertical-selection ────── */
     emitter?.stepStart('at-vertical-selection', STEP_DESCRIPTIONS['at-vertical-selection']);
-    await clickEnabledButton(page, /next/i);
-    await page.waitForURL('**/vertical-triage**');
-    await waitForPageReady(page);
+    if (!skippedSoftIntro) {
+      await clickEnabledButton(page, /next/i);
+      await page.waitForURL('**/vertical-triage**');
+      await waitForPageReady(page);
+    }
     console.log('  ✓ at-vertical-selection');
     emitter?.stepComplete('at-vertical-selection');
     stepIndex++;

@@ -7,6 +7,7 @@ import { WEB_STEPS, MOBILE_STEPS, ALL_VERTICALS, ALL_ENVS } from '../types.js';
 import { STEP_DESCRIPTIONS } from './step-descriptions.js';
 import { COLORS } from './theme.js';
 import { FlagBrowser } from './flag-browser.js';
+import { revertSessionToggles, getSessionToggleEntries } from './flag-session.js';
 
 export interface WizardResult {
   platform: Platform;
@@ -31,8 +32,9 @@ interface EnvWarning {
 export function validateEnvVars(platform: Platform, step: Step, env: Env): EnvWarning[] {
   const warnings: EnvWarning[] = [];
 
-  if (platform === 'mobile' && !process.env.CZEN_API_KEY) {
-    warnings.push({ var: 'CZEN_API_KEY', reason: 'Required for all mobile flows.' });
+  const apiKeyVar = env === 'stg' ? 'CZEN_API_KEY_STG' : 'CZEN_API_KEY';
+  if (platform === 'mobile' && !process.env[apiKeyVar]) {
+    warnings.push({ var: apiKeyVar, reason: 'Required for all mobile flows.' });
   }
 
   const dbPassVar = env === 'stg' ? 'MYSQL_DB_PASS_STG' : 'MYSQL_DB_PASS_DEV';
@@ -43,15 +45,21 @@ export function validateEnvVars(platform: Platform, step: Step, env: Env): EnvWa
   return warnings;
 }
 
-type WizardStage = 'env' | 'platform' | 'vertical' | 'step' | 'tier' | 'options' | 'confirm';
+type WizardStage = 'env' | 'platform' | 'vertical' | 'step' | 'flags' | 'tier' | 'options' | 'confirm';
 
-const STAGES: WizardStage[] = ['env', 'platform', 'vertical', 'step', 'tier', 'options', 'confirm'];
+const ALL_STAGES: WizardStage[] = ['env', 'platform', 'vertical', 'step', 'flags', 'tier', 'options', 'confirm'];
+
+const STEPS_NEEDING_TIER: ReadonlySet<Step> = new Set<Step>([
+  'at-basic-payment', 'at-premium-payment', 'at-app-download',
+  'upgraded', 'at-disclosure', 'fully-enrolled',
+]);
 
 const STAGE_LABELS: Record<WizardStage, string> = {
   env: 'Environment',
   platform: 'Platform',
   vertical: 'Vertical',
   step: 'Step',
+  flags: 'Flags',
   tier: 'Tier',
   options: 'Options',
   confirm: 'Confirm',
@@ -79,18 +87,23 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
   const [highlightedStep, setHighlightedStep] = useState<Step | null>(null);
   const [showFlags, setShowFlags] = useState(false);
 
+  const needsTier = STEPS_NEEDING_TIER.has(step);
+  const skip = new Set<WizardStage>();
+  if (!needsTier) skip.add('tier');
+  const stages = ALL_STAGES.filter(s => !skip.has(s));
+
   useInput((input, key) => {
     if (showFlags) return;
     if (key.escape) {
-      const idx = STAGES.indexOf(stage);
-      if (idx > 0) setStage(STAGES[idx - 1]);
+      const idx = stages.indexOf(stage);
+      if (idx > 0) setStage(stages[idx - 1]);
     }
     if (input === 'q' && stage !== 'options') {
-      exit();
+      void revertSessionToggles().finally(() => exit());
     }
   });
 
-  const currentIdx = STAGES.indexOf(stage);
+  const currentIdx = stages.indexOf(stage);
 
   return (
     <Box flexDirection="column" height="100%">
@@ -103,7 +116,7 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
       <Box flexGrow={1} flexDirection="row">
         <Box flexDirection="column" width={24} borderStyle="single" borderColor={COLORS.chrome} paddingX={1}>
           <Text color={COLORS.dimText} dimColor>SETUP</Text>
-          {STAGES.map((s, i) => {
+          {stages.map((s, i) => {
             const icon = i < currentIdx ? '✓' : i === currentIdx ? '▸' : '○';
             const color = i < currentIdx ? COLORS.stepComplete : i === currentIdx ? COLORS.stepRunning : COLORS.stepPending;
             return (
@@ -122,7 +135,7 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
       <Box borderStyle="single" borderColor={COLORS.chrome} paddingX={1}>
         <Text color={COLORS.dimText}>↑↓ select · enter: confirm · esc: back · q: quit</Text>
         <Box flexGrow={1} />
-        <Text color={COLORS.dimText}>Step {currentIdx + 1}/{STAGES.length}</Text>
+        <Text color={COLORS.dimText}>Step {currentIdx + 1}/{stages.length}</Text>
       </Box>
     </Box>
   );
@@ -142,6 +155,37 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
             </Box>
           </Box>
         );
+
+      case 'flags': {
+        const nextStage = needsTier ? 'tier' : 'options';
+        return (
+          <Box flexDirection="column">
+            <Text color={COLORS.stepRunning} bold>Feature Flags</Text>
+            <Text color={COLORS.dimText}>Review or toggle LaunchDarkly flags for {env} before running</Text>
+            {showFlags ? (
+              <Box marginTop={1}>
+                <FlagBrowser env={env} onClose={() => setShowFlags(false)} />
+              </Box>
+            ) : (
+              <Box marginTop={1}>
+                <SelectInput
+                  items={[
+                    { label: 'Continue', value: 'continue' },
+                    { label: 'Manage feature flags', value: 'flags' },
+                  ]}
+                  onSelect={(item) => {
+                    if (item.value === 'flags') {
+                      setShowFlags(true);
+                    } else {
+                      setStage(nextStage);
+                    }
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+        );
+      }
 
       case 'platform':
         return (
@@ -193,7 +237,11 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
             <Box marginTop={1}>
               <SelectInput
                 items={steps.map(s => ({ label: s, value: s }))}
-                onSelect={(item) => { setStep(item.value as Step); setStage('tier'); }}
+                onSelect={(item) => {
+                  const selected = item.value as Step;
+                  setStep(selected);
+                  setStage('flags');
+                }}
                 onHighlight={(item) => { setHighlightedStep(item.value as Step); }}
               />
             </Box>
@@ -243,6 +291,7 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
         const warnings = validateEnvVars(platform, step, env);
         const parsedCount = parseInt(count, 10);
         const countValid = !isNaN(parsedCount) && parsedCount >= 1 && parsedCount <= 50;
+        const toggledFlags = getSessionToggleEntries();
         return (
           <Box flexDirection="column">
             <Text color={COLORS.stepRunning} bold>Ready to launch</Text>
@@ -254,6 +303,24 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
               <Text><Text color={COLORS.dimText}>Count       </Text><Text color={COLORS.contextValue}>{count}</Text></Text>
               <Text><Text color={COLORS.dimText}>Environment </Text><Text color={COLORS.contextValue}>{env}</Text></Text>
             </Box>
+            {toggledFlags.length > 0 && (
+              <Box marginTop={1} flexDirection="column">
+                <Text color={COLORS.banner} bold>Flags changed this session (will revert on exit):</Text>
+                {toggledFlags.map(f => (
+                  <Text key={f.key}>
+                    <Text color={COLORS.dimText}>  </Text>
+                    <Text color={f.originalState ? COLORS.stepError : COLORS.stepComplete}>
+                      {f.originalState ? '● OFF' : '● ON '}
+                    </Text>
+                    <Text color={COLORS.dimText}> ← </Text>
+                    <Text color={f.originalState ? COLORS.stepComplete : COLORS.stepError}>
+                      {f.originalState ? 'ON' : 'OFF'}
+                    </Text>
+                    <Text color={COLORS.contextValue}>  {f.key}</Text>
+                  </Text>
+                ))}
+              </Box>
+            )}
             {warnings.length > 0 && (
               <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.stepError} bold>⚠ Missing environment variables:</Text>
@@ -267,36 +334,27 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
                 <Text color={COLORS.stepError}>⚠ Count must be 1-50. Go back to fix.</Text>
               </Box>
             )}
-            {showFlags ? (
-              <Box marginTop={1}>
-                <FlagBrowser env={env} onClose={() => setShowFlags(false)} />
-              </Box>
-            ) : (
-              <Box marginTop={1}>
-                <SelectInput
-                  items={[
-                    { label: 'Run all steps automatically', value: 'run-all' },
-                    { label: 'Step through one at a time', value: 'step-through' },
-                    { label: 'Manage feature flags', value: 'flags' },
-                    { label: '← Go back and edit', value: 'back' },
-                  ]}
-                  onSelect={(item) => {
-                    if (item.value === 'back') {
-                      setStage('platform');
-                    } else if (item.value === 'flags') {
-                      setShowFlags(true);
-                    } else if (countValid && warnings.length === 0) {
-                      onComplete({
-                        platform, verticals, step, tier, env,
-                        count: parsedCount,
-                        autoClose,
-                        executionMode: item.value as 'run-all' | 'step-through',
-                      });
-                    }
-                  }}
-                />
-              </Box>
-            )}
+            <Box marginTop={1}>
+              <SelectInput
+                items={[
+                  { label: 'Run all steps automatically', value: 'run-all' },
+                  { label: 'Step through one at a time', value: 'step-through' },
+                  { label: '← Go back and edit', value: 'back' },
+                ]}
+                onSelect={(item) => {
+                  if (item.value === 'back') {
+                    setStage('platform');
+                  } else if (countValid && warnings.length === 0) {
+                    onComplete({
+                      platform, verticals, step, tier, env,
+                      count: parsedCount,
+                      autoClose,
+                      executionMode: item.value as 'run-all' | 'step-through',
+                    });
+                  }
+                }}
+              />
+            </Box>
           </Box>
         );
       }

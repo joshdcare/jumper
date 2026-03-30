@@ -10,6 +10,7 @@ import type { VerticalConfig } from '../verticals.js';
 import { VERTICAL_REGISTRY } from '../verticals.js';
 import { STEP_DESCRIPTIONS } from './step-descriptions.js';
 import { RunRecorder } from '../recorder/run-recorder.js';
+import { revertSessionToggles } from './flag-session.js';
 
 type Screen = 'wizard' | 'execution';
 let runId = 0;
@@ -150,7 +151,7 @@ async function runMobileExecution(
 
           if (stepDef.name === 'account-created' && ctx.email) {
             emitter.auth('Obtaining access token...');
-            const accessToken = await getAccessToken(ctx.email, envConfig.baseUrl);
+            const accessToken = await getAccessToken(ctx.email, envConfig);
             ctx.accessToken = accessToken;
             client.setAccessToken(accessToken);
             emitter.auth('Access token acquired');
@@ -238,7 +239,7 @@ export function App(): React.ReactElement {
   }, []);
 
   const handleQuit = useCallback(() => {
-    exit();
+    void revertSessionToggles().finally(() => exit());
   }, [exit]);
 
   const handleCreateAnother = useCallback(() => {

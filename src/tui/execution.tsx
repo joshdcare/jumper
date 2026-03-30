@@ -61,7 +61,7 @@ export function Execution({
   executionMode, onStepContinue, onRetry, onQuit,
   onCreateAnother, onNewConfig, onAbortMonitoring,
 }: ExecutionProps): React.ReactElement {
-  const { exit } = useApp();
+  useApp();
   const [stepStatuses, setStepStatuses] = useState<Map<string, StepStatus>>(
     () => new Map(steps.map(s => [s, 'pending']))
   );
@@ -130,7 +130,7 @@ export function Execution({
       } else if (event.type === 'run-complete') {
         setDone(true);
         if (quitRequestedRef.current) {
-          setTimeout(() => { onQuit(); exit(); }, 0);
+          setTimeout(() => { onQuit(); }, 0);
         }
       }
 
@@ -163,7 +163,7 @@ export function Execution({
         if (key.return) {
           if (menuIndex === 0) onCreateAnother();
           else if (menuIndex === 1) onNewConfig();
-          else { onQuit(); exit(); }
+          else { onQuit(); }
         }
       }
       if (input === 'l') {
@@ -171,7 +171,7 @@ export function Execution({
         setLogsExpanded(prev => !prev);
       }
       if (input === 'd') setDetailMode(prev => !prev);
-      if (input === 'q') { onQuit(); exit(); }
+      if (input === 'q') { onQuit(); }
       if (key.escape && logsExpanded) setLogsExpanded(false);
       if (key.tab && !key.shift) {
         const idx = steps.indexOf(viewingStep as Step);
@@ -196,7 +196,6 @@ export function Execution({
         return;
       }
       onQuit();
-      exit();
     }
     if (input === 'r' && waiting) { setWaiting(false); onRetry(); }
     if (key.return && waiting) { setWaiting(false); onStepContinue(); }
