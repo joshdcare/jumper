@@ -5,7 +5,7 @@ import ora from 'ora';
 import { ALL_STEPS, WEB_STEPS, MOBILE_STEPS, ALL_ENVS, ENV_CONFIGS } from './types.js';
 import type { Step, Tier, Vertical, Platform, Env, CliOptions, ProviderContext, EnvConfig } from './types.js';
 import { ApiClient } from './api/client.js';
-import { getAccessToken } from './api/auth.js';
+import { authenticateClient } from './api/auth.js';
 import { getStepsUpTo } from './steps/registry.js';
 import { VERTICAL_REGISTRY } from './verticals.js';
 import { RunEmitter, consoleAdapter } from './tui/emitter.js';
@@ -237,14 +237,13 @@ async function runMobileFlow(opts: CliOptions, envConfig: EnvConfig): Promise<vo
   let failed = false;
   try {
     for (const step of steps) {
-      if (step.name !== 'account-created' && !ctx.accessToken) {
-        const authSpinner = ora('Acquiring access token…').start();
+      if (step.name !== 'account-created' && !client.isAuthenticated) {
+        const authSpinner = ora('Authenticating for GraphQL…').start();
         try {
-          ctx.accessToken = await getAccessToken(ctx.email, envConfig);
-          client.setAccessToken(ctx.accessToken);
-          authSpinner.succeed('Access token acquired');
+          await authenticateClient(ctx.email, envConfig, client);
+          authSpinner.succeed('Authenticated via session cookies');
         } catch {
-          authSpinner.warn('Access token unavailable — GraphQL steps may fail');
+          authSpinner.warn('Authentication failed — GraphQL steps may fail');
         }
       }
 

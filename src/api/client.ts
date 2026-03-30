@@ -4,7 +4,7 @@ import { truncate } from '../recorder/truncate.js';
 export class ApiClient {
   readonly baseUrl: string;
   readonly apiKey: string;
-  private accessToken?: string;
+  private sessionCookies?: string;
   private emitter?: RunEmitter;
 
   constructor(baseUrl: string, apiKey: string) {
@@ -16,8 +16,12 @@ export class ApiClient {
     this.emitter = emitter;
   }
 
-  setAccessToken(token: string): void {
-    this.accessToken = token;
+  setSessionCookies(cookies: string): void {
+    this.sessionCookies = cookies;
+  }
+
+  get isAuthenticated(): boolean {
+    return !!this.sessionCookies;
   }
 
   private async trackedFetch(url: string, init: RequestInit): Promise<Response> {
@@ -46,14 +50,13 @@ export class ApiClient {
   async graphql<T>(
     query: string,
     variables: Record<string, unknown>,
-    authToken?: string
   ): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Pragma: 'crcm-x-authorized',
     };
-    if (this.accessToken) {
-      headers['Authorization'] = this.accessToken;
+    if (this.sessionCookies) {
+      headers['Cookie'] = this.sessionCookies;
     }
 
     const res = await this.trackedFetch(`${this.baseUrl}/api/graphql`, {

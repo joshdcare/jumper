@@ -60,8 +60,6 @@ export interface EnvConfig {
   baseUrl: string;
   apiKey: string;
   sterlingCallbackUrl: string;
-  auth0Authority: string;
-  auth0ClientId: string;
   db: {
     host: string;
     user: string;
@@ -105,8 +103,6 @@ export const ENV_CONFIGS: Record<Env, EnvConfig> = {
     apiKey: process.env.CZEN_API_KEY ?? '',
     sterlingCallbackUrl:
       'https://safety-background-check.useast1.dev.omni.carezen.net',
-    auth0Authority: 'https://login.dev.carezen.net',
-    auth0ClientId: 'RtFw57ig6jKyP1efQdBB7HefNgUx044L',
     db: {
       host: 'dev-czendb-ro.use.dom.carezen.net',
       user: 'readOnly',
@@ -119,8 +115,6 @@ export const ENV_CONFIGS: Record<Env, EnvConfig> = {
     apiKey: process.env.CZEN_API_KEY_STG ?? '',
     sterlingCallbackUrl:
       'https://safety-background-check.useast1.stg.omni.carezen.net',
-    auth0Authority: 'https://login.stg.carezen.net',
-    auth0ClientId: 'RtFw57ig6jKyP1efQdBB7HefNgUx044L',
     db: {
       host: 'stg-czendb-ro.use.dom.carezen.net',
       user: 'readOnly',

@@ -1,126 +1,126 @@
 import { chromium } from 'playwright';
 import crypto from 'crypto';
 import type { EnvConfig } from '../types.js';
+import type { ApiClient } from './client.js';
 
-function generatePKCE() {
-  const verifier = crypto.randomBytes(32).toString('base64url');
-  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-  return { verifier, challenge };
-}
-
-export async function getAccessToken(
+/**
+ * Login via the HA (Hydra) proxy in a headless browser and extract session
+ * cookies. The proxy handles the Auth0 token exchange server-side and stores
+ * the resulting tokens in httpOnly cookies. Passing those cookies with
+ * subsequent requests authenticates them at the API gateway level.
+ */
+async function getSessionCookies(
   email: string,
   envConfig: EnvConfig
 ): Promise<string> {
-  const maxRetries = 3;
-
   const { baseUrl } = envConfig;
   const haAuthority = `${baseUrl}/api/id-oidc-proxy/ha`;
-  const clientId = 'oidc-proxy';
-  const scope = 'openid offline profile email';
   const redirectUri = `${baseUrl}/app/id-oidc-client/signin-callback.html`;
 
+  const challenge = crypto
+    .createHash('sha256')
+    .update(crypto.randomBytes(32).toString('base64url'))
+    .digest('base64url');
+  const state = crypto.randomBytes(16).toString('hex');
+
+  const authUrl = new URL(`${haAuthority}/oauth2/authorize`);
+  authUrl.searchParams.set('client_id', 'oidc-proxy');
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', 'openid offline profile email');
+  authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('code_challenge', challenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    await page.goto(authUrl.toString(), {
+      waitUntil: 'networkidle',
+      timeout: 45_000,
+    });
+
+    // Stage 1: Hydra custom login page — enter email
+    const emailInput = page
+      .locator('input[type="email"], input[name="email"], #username, #emailId')
+      .first();
+    await emailInput.waitFor({ timeout: 15_000 });
+    await emailInput.fill(email);
+
+    const continueButton = page.getByRole('button', {
+      name: 'Continue',
+      exact: true,
+    });
+    if (await continueButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await continueButton.click();
+      // Wait for navigation to Auth0 login page
+      await page.waitForURL((url) => url.hostname.includes('login'), {
+        timeout: 20_000,
+      });
+    }
+
+    // Stage 2: Auth0 password page
+    await page.locator('#password').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('#password').fill('letmein1');
+
+    const loginSubmit = page
+      .getByRole('button', { name: 'Continue' })
+      .or(page.getByRole('button', { name: 'Log In' }));
+    await loginSubmit.first().waitFor({ state: 'visible', timeout: 10_000 });
+    await loginSubmit.first().click();
+
+    // Wait for the redirect back to the callback page
+    await page.waitForURL(
+      (url) => url.pathname.includes('signin-callback'),
+      { timeout: 30_000 },
+    );
+    await page.waitForTimeout(1_500);
+
+    // Extract all cookies for the carezen domain
+    const cookies = await context.cookies();
+    const cookieHeader = cookies
+      .filter((c) => c.domain.includes('carezen'))
+      .map((c) => `${c.name}=${c.value}`)
+      .join('; ');
+
+    if (!cookieHeader) {
+      throw new Error('Login succeeded but no session cookies were set');
+    }
+
+    return cookieHeader;
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * Authenticate the API client for GraphQL calls.
+ *
+ * On environments where the OIDC proxy manages tokens via cookies (stg),
+ * we log in through a headless browser and extract session cookies.
+ * The cookies are then sent with every GraphQL request.
+ */
+export async function authenticateClient(
+  email: string,
+  envConfig: EnvConfig,
+  client: ApiClient
+): Promise<void> {
+  const maxRetries = 3;
+
   for (let retry = 0; retry < maxRetries; retry++) {
-    let browser;
     try {
-      const { verifier, challenge } = generatePKCE();
-      const state = crypto.randomBytes(16).toString('hex');
-
-      browser = await chromium.launch({ headless: true });
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
-      let authCode: string | undefined;
-
-      page.on('request', (req) => {
-        const url = req.url();
-        if (url.includes('signin-callback') && url.includes('code=')) {
-          const parsed = new URL(url);
-          authCode = parsed.searchParams.get('code') ?? undefined;
-        }
-      });
-
-      const authUrl = new URL(`${haAuthority}/oauth2/authorize`);
-      authUrl.searchParams.set('client_id', clientId);
-      authUrl.searchParams.set('redirect_uri', redirectUri);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('scope', scope);
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('code_challenge', challenge);
-      authUrl.searchParams.set('code_challenge_method', 'S256');
-
-      await page.goto(authUrl.toString(), {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000,
-      });
-
-      // Stage 1: Hydra custom login page — enter email and click Continue
-      const emailInput = page
-        .locator('input[type="email"], input[name="email"], #username, #emailId')
-        .first();
-      await emailInput.waitFor({ timeout: 15000 });
-      await emailInput.clear();
-      await emailInput.fill(email);
-
-      const continueButton = page.getByRole('button', {
-        name: 'Continue',
-        exact: true,
-      });
-      if (await continueButton.isVisible({ timeout: 3000 })) {
-        await continueButton.click();
-      }
-
-      // Stage 2: Auth0 password page
-      await page.locator('#password').waitFor({ timeout: 15000 });
-      await page.locator('#password').fill('letmein1');
-
-      const loginSubmit = page.getByRole('button', { name: 'Continue' }).or(
-        page.getByRole('button', { name: 'Log In' })
-      );
-      await loginSubmit.first().waitFor({ state: 'visible', timeout: 10000 });
-      await loginSubmit.first().click();
-
-      for (let i = 0; i < 30; i++) {
-        if (authCode) break;
-        await page.waitForTimeout(1000);
-      }
-
-      if (!authCode) {
-        console.warn(`  Debug URL: ${page.url()}`);
-        await page.screenshot({ path: `/tmp/auth-debug-${retry}.png` });
-      }
-
-      await browser.close();
-
-      if (!authCode) {
-        console.warn(`Auth attempt ${retry + 1}/${maxRetries}: no auth code captured`);
-        continue;
-      }
-
-      const tokenResponse = await fetch(`${haAuthority}/oauth2/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          client_id: clientId,
-          code: authCode,
-          redirect_uri: redirectUri,
-          code_verifier: verifier,
-        }).toString(),
-      });
-
-      const tokenData = await tokenResponse.json();
-
-      if (tokenData.access_token) {
-        return `Bearer ${tokenData.access_token}`;
-      }
-
-      console.warn(`Auth attempt ${retry + 1}/${maxRetries}: token exchange failed:`, tokenData);
+      const cookies = await getSessionCookies(email, envConfig);
+      client.setSessionCookies(cookies);
+      return;
     } catch (error) {
-      console.warn(`Auth attempt ${retry + 1}/${maxRetries} failed:`, (error as Error).message);
-      if (browser) await browser.close().catch(() => {});
+      console.warn(
+        `Auth attempt ${retry + 1}/${maxRetries} failed:`,
+        (error as Error).message,
+      );
     }
   }
 
-  throw new Error('Failed to retrieve access token after all retries');
+  throw new Error('Failed to authenticate after all retries');
 }

@@ -105,7 +105,7 @@ async function runMobileExecution(
 ): Promise<void> {
   const { ApiClient } = await import('../api/client.js');
   const { getStepsUpTo } = await import('../steps/registry.js');
-  const { getAccessToken } = await import('../api/auth.js');
+  const { authenticateClient } = await import('../api/auth.js');
 
   for (let i = 0; i < result.count; i++) {
     for (const vertical of result.verticals) {
@@ -150,14 +150,12 @@ async function runMobileExecution(
           if (ctx.memberId) emitter.contextUpdate('memberId', ctx.memberId);
 
           if (stepDef.name === 'account-created' && ctx.email) {
-            emitter.auth('Obtaining access token...');
+            emitter.auth('Authenticating for GraphQL...');
             try {
-              const accessToken = await getAccessToken(ctx.email, envConfig);
-              ctx.accessToken = accessToken;
-              client.setAccessToken(accessToken);
-              emitter.auth('Access token acquired');
+              await authenticateClient(ctx.email, envConfig, client);
+              emitter.auth('Authenticated via session cookies');
             } catch {
-              emitter.auth('⚠ Access token unavailable — GraphQL steps will be skipped');
+              emitter.auth('⚠ Authentication failed — GraphQL steps may fail');
             }
           }
 
