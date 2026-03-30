@@ -48,14 +48,25 @@ export async function runWebEnrollmentFlow(
 
   let extPath: string | undefined;
   const amplitudeExtId = 'acehfjhnmhbmgkedjmjlobpgdicnhkbp';
-  const chromeExtBase = `${process.env.HOME}/Library/Application Support/Google/Chrome/Default/Extensions/${amplitudeExtId}`;
+  const chromeBase = `${process.env.HOME}/Library/Application Support/Google/Chrome`;
   try {
-    const versions = fs.readdirSync(chromeExtBase);
-    if (versions.length > 0) {
-      extPath = `${chromeExtBase}/${versions[0]}`;
+    const profiles = fs.readdirSync(chromeBase).filter(
+      (d) => d === 'Default' || d.startsWith('Profile '),
+    );
+    for (const profile of profiles) {
+      const extDir = path.join(chromeBase, profile, 'Extensions', amplitudeExtId);
+      try {
+        const versions = fs.readdirSync(extDir);
+        if (versions.length > 0) {
+          extPath = path.join(extDir, versions[0]);
+          break;
+        }
+      } catch {
+        // Not in this profile
+      }
     }
   } catch {
-    // Extension not installed — continue without it
+    // Chrome not installed or not accessible
   }
 
   const contextOptions = recorder?.playwrightContextOptions() ?? {};
