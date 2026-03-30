@@ -193,7 +193,7 @@ export async function runWebEnrollmentFlow(
     emitter?.stepStart('at-soft-intro-combined', STEP_DESCRIPTIONS['at-soft-intro-combined']);
     await page.getByText(/find jobs/i).first().click();
     await page.waitForURL(
-      url => url.pathname.includes('/soft-intro-combined') || url.pathname.includes('/vertical-triage'),
+      url => url.pathname.includes('/soft-intro') || url.pathname.includes('/vertical-triage'),
       { timeout: 15_000 },
     );
     await waitForPageReady(page);
