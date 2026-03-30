@@ -94,7 +94,8 @@ export async function runWebEnrollmentFlow(
   if (recorder) {
     await recorder.startTrace(context, browser);
   }
-  const page = await context.newPage();
+  const existingPages = context.pages();
+  const page = existingPages.length > 0 ? existingPages[0] : await context.newPage();
   page.setDefaultTimeout(15_000);
 
   if (emitter) {
