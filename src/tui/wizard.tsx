@@ -307,17 +307,26 @@ export function Wizard({ onComplete }: WizardProps): React.ReactElement {
               <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.banner} bold>Flags changed this session (will revert on exit):</Text>
                 {toggledFlags.map(f => (
-                  <Text key={f.key}>
-                    <Text color={COLORS.dimText}>  </Text>
-                    <Text color={f.originalState ? COLORS.stepError : COLORS.stepComplete}>
-                      {f.originalState ? '● OFF' : '● ON '}
+                  <Box key={f.key} flexDirection="column">
+                    <Text>
+                      <Text color={COLORS.dimText}>  </Text>
+                      <Text color={f.originalOn ? COLORS.stepError : COLORS.stepComplete}>
+                        {f.originalOn ? '● OFF' : '● ON '}
+                      </Text>
+                      <Text color={COLORS.dimText}> ← </Text>
+                      <Text color={f.originalOn ? COLORS.stepComplete : COLORS.stepError}>
+                        {f.originalOn ? 'ON' : 'OFF'}
+                      </Text>
+                      <Text color={COLORS.contextValue}>  {f.key}</Text>
                     </Text>
-                    <Text color={COLORS.dimText}> ← </Text>
-                    <Text color={f.originalState ? COLORS.stepComplete : COLORS.stepError}>
-                      {f.originalState ? 'ON' : 'OFF'}
-                    </Text>
-                    <Text color={COLORS.contextValue}>  {f.key}</Text>
-                  </Text>
+                    {f.originalFallthroughName && (
+                      <Text>
+                        <Text color={COLORS.dimText}>{'                 variation: '}</Text>
+                        <Text color={COLORS.contextValue}>{f.originalFallthroughName}</Text>
+                        <Text color={COLORS.dimText}>{' → changed'}</Text>
+                      </Text>
+                    )}
+                  </Box>
                 ))}
               </Box>
             )}

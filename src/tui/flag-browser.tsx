@@ -3,7 +3,7 @@ import { Box, Text, useInput, useApp } from 'ink';
 import { LDClient, type LDFlag } from '../api/launchdarkly.js';
 import type { Env } from '../types.js';
 import { COLORS } from './theme.js';
-import { recordToggle, getSessionToggleCount } from './flag-session.js';
+import { recordSnapshot, getSessionToggleCount } from './flag-session.js';
 
 export interface FlagBrowserProps {
   env: Env;
@@ -87,7 +87,9 @@ export function FlagBrowser({ env, onClose }: FlagBrowserProps): React.ReactElem
     setTogglingKey(flag.key);
     setError(null);
     try {
-      recordToggle(flag.key, flag.on, env);
+      const ftVar = flag.variations.find(v => v.id === flag.fallthroughVariationId);
+      const ftVariationName = ftVar?.name ?? null;
+      recordSnapshot(flag.key, flag.on, flag.fallthroughVariationId, env, ftVariationName);
       const newState = !flag.on;
       await client.toggleFlag(flag.key, env, newState);
       setTogglingKey(null);

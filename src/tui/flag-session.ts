@@ -1,20 +1,28 @@
 import type { Env } from '../types.js';
 
 interface ToggleRecord {
-  originalState: boolean;
+  originalOn: boolean;
+  originalFallthroughId: string | null;
+  originalFallthroughName: string | null;
   env: Env;
 }
 
 const sessionToggles = new Map<string, ToggleRecord>();
 
-/**
- * Record the original state of a flag before the first toggle this session.
- * Subsequent toggles of the same flag are ignored (we only care about the
- * state we need to restore on exit).
- */
-export function recordToggle(flagKey: string, originalState: boolean, env: Env): void {
+export function recordSnapshot(
+  flagKey: string,
+  originalOn: boolean,
+  originalFallthroughId: string | null,
+  env: Env,
+  originalFallthroughName?: string | null
+): void {
   if (!sessionToggles.has(flagKey)) {
-    sessionToggles.set(flagKey, { originalState, env });
+    sessionToggles.set(flagKey, {
+      originalOn,
+      originalFallthroughId,
+      originalFallthroughName: originalFallthroughName ?? null,
+      env,
+    });
   }
 }
 
@@ -26,19 +34,22 @@ export function getSessionToggleCount(): number {
   return sessionToggles.size;
 }
 
-export function getSessionToggleEntries(): Array<{ key: string; originalState: boolean; env: Env }> {
-  return [...sessionToggles.entries()].map(([key, { originalState, env }]) => ({
+export function getSessionToggleEntries(): Array<{
+  key: string;
+  originalOn: boolean;
+  originalFallthroughId: string | null;
+  originalFallthroughName: string | null;
+  env: Env;
+}> {
+  return [...sessionToggles.entries()].map(([key, rec]) => ({
     key,
-    originalState,
-    env,
+    originalOn: rec.originalOn,
+    originalFallthroughId: rec.originalFallthroughId,
+    originalFallthroughName: rec.originalFallthroughName,
+    env: rec.env,
   }));
 }
 
-/**
- * Revert all flags toggled this session back to their original state.
- * Best-effort — individual failures are swallowed so remaining flags
- * still get reverted.
- */
 export async function revertSessionToggles(): Promise<void> {
   if (sessionToggles.size === 0) return;
 
@@ -56,8 +67,11 @@ export async function revertSessionToggles(): Promise<void> {
   sessionToggles.clear();
 
   await Promise.allSettled(
-    entries.map(([flagKey, { originalState, env }]) =>
-      client.toggleFlag(flagKey, env, originalState)
-    ),
+    entries.map(async ([flagKey, { originalOn, originalFallthroughId, env }]) => {
+      if (originalFallthroughId !== null) {
+        await client.setFallthroughVariation(flagKey, env, originalFallthroughId);
+      }
+      await client.toggleFlag(flagKey, env, originalOn);
+    }),
   );
 }
