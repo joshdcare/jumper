@@ -93,7 +93,7 @@ The wizard walks through up to eight screens:
 2. **Platform** — Web or Mobile
 3. **Vertical** — Child Care, Senior Care, Pet Care, Housekeeping, or Tutoring
 4. **Step** — The enrollment checkpoint to stop at (platform-specific list with descriptions)
-5. **Feature Flags** — Optionally toggle LaunchDarkly flags for the session (changes revert on exit)
+5. **Feature Flags** — Optionally manage LaunchDarkly flags for the session (toggle ON/OFF, select which variation is served — all changes revert on exit)
 6. **Tier** — Basic or Premium (only shown for steps that require payment)
 7. **Options** — Count (how many providers to create) and execution mode (Run All or Step Through)
 8. **Confirm** — Review selections, see any toggled flags, and launch
@@ -138,6 +138,32 @@ Logs include:
 
 - **Run All** — Executes every step automatically from start to finish. Press `esc` to pause.
 - **Step Through** — Pauses after each step completes. Press `enter` to advance to the next step.
+
+### Feature Flags (LaunchDarkly)
+
+Jumper integrates with LaunchDarkly so you can manage feature flags without leaving the terminal. Access the flag browser from the wizard (step 5) or as a standalone command:
+
+```bash
+jumper flags
+```
+
+**List view** — Search flags by name, see ON/OFF state and the active variation (or `[rollout]` for percentage rollouts) at a glance.
+
+**Detail view** — Press Enter on any flag to open its detail view:
+- See all variations with their values
+- Select which variation is served as the fallthrough (the default when the flag is ON)
+- Toggle the flag ON/OFF with `t`
+- For rollout flags, see the current weight percentages per variation
+
+**Session-scoped changes** — All flag modifications (ON/OFF toggles and variation changes) are tracked per session. When you exit jumper, everything reverts to its original state automatically — including restoring percentage rollouts. The confirm screen shows a summary of what was changed.
+
+| Key | List view | Detail view |
+|-----|-----------|-------------|
+| `↑` / `↓` | Navigate flags | Navigate variations |
+| `enter` | Open flag detail | Set selected variation |
+| `t` | — | Toggle flag ON/OFF |
+| `esc` | Close browser | Back to list |
+| Type | Search flags | — |
 
 ### After completion
 
@@ -355,7 +381,7 @@ jumper/
 │   │   ├── auth.ts               # Cookie-based auth via headless browser login
 │   │   ├── client.ts             # HTTP client — GraphQL, REST JSON, SPI, multipart
 │   │   ├── graphql.ts            # All GraphQL queries and mutations
-│   │   └── launchdarkly.ts       # LaunchDarkly REST API client (search + toggle flags)
+│   │   └── launchdarkly.ts       # LaunchDarkly REST API client (search, toggle, variation selection)
 │   ├── payloads/
 │   │   ├── childcare.ts          # Child Care payloads
 │   │   ├── seniorcare.ts         # Senior Care payloads
@@ -391,12 +417,18 @@ jumper/
 ├── tests/
 │   ├── index.test.ts
 │   ├── client.test.ts
+│   ├── launchdarkly.test.ts      # LaunchDarkly client tests
 │   ├── registry.test.ts
 │   ├── verticals.test.ts
+│   ├── tui/
+│   │   ├── flag-browser.test.tsx  # Flag browser component tests
+│   │   ├── flag-session.test.ts   # Session tracking + revert tests
+│   │   ├── wizard.test.ts
+│   │   └── execution-spinner.test.tsx
 │   └── recorder/
-│       ├── run-recorder.test.ts  # RunRecorder unit tests
-│       ├── html-template.test.ts # HTML report generation tests
-│       └── truncate.test.ts      # Truncation utility tests
+│       ├── run-recorder.test.ts   # RunRecorder unit tests
+│       ├── html-template.test.ts  # HTML report generation tests
+│       └── truncate.test.ts       # Truncation utility tests
 ├── runs/                         # Generated run artifacts (git-ignored)
 ├── demo.tape                     # VHS tape for recording the demo GIF
 └── docs/
