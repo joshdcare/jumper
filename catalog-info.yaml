@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: p-jumper-utils
+  description: Jumper is a CLI/TUI that automates Care.com provider enrollment so QA can land on a specific step fast—web via Playwright, mobile via APIs.
+  tags:
+    - typescript
+
+spec:
+  type: tool
+  lifecycle: production
+  owner: team-unknown
