@@ -12,8 +12,8 @@ Every run (CLI and TUI) is automatically recorded to `runs/` with a structured J
 ## Setup
 
 ```bash
-git clone git@github.com:joshdcare/jumper.git
-cd jumper
+git clone git@github.com:care-dot-com/p-jumper-utils.git
+cd p-jumper-utils
 ./setup.sh
 ```
 
@@ -367,7 +367,7 @@ Mobile enrollment targets **Android only**. The iOS enrollment flow has inconsis
 ## Project Structure
 
 ```
-jumper/
+p-jumper-utils/
 ├── .env                          # Environment variables (not committed)
 ├── .env.example                  # Template for .env
 ├── setup.sh                      # First-time setup script
