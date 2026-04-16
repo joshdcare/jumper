@@ -218,6 +218,24 @@ jumper --step fully-enrolled --platform mobile --tier basic
 jumper --step fully-enrolled --platform mobile --tier premium --vertical tutoring
 ```
 
+### Member (seeker) web login
+
+Sign in to the **member** web app in a visible Chromium window using the same HA → Auth0 flow as headless API authentication (`src/api/auth.ts`). Uses **incognito** (`--incognito`) when launching the browser, consistent with the provider web enrollment path when no local Chrome extension is loaded.
+
+```bash
+jumper seeker-login --email seeker@example.com --env dev
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--email` | *(required)* | Member login email (username) |
+| `--password` | *(omit for fallback)* | If omitted, tries **`letmein1`** then **`Letmein1`**. If set, uses **only** that password (no fallback). |
+| `--env` | `dev` | `dev` or `stg` |
+| `--message-cid` | *(omit)* | After login, open `/app/messages?cid=…` (pass full `messaging:!members-…` from automation `message_cid`). Without it, opens `/app/mhp` only. |
+| `--auto-close` | off | Close the browser right after landing on the post-login URL |
+
+**Password note:** The automation database stores a **password hash**, not plaintext — you cannot “query” the real password. For accounts created through the usual QA flows, the password is usually **`letmein1`** or **`Letmein1`** (see [Test Data](#test-data)). Omit `--password` to try both in order.
+
 ---
 
 ## Run Recording

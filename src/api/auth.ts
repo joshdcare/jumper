@@ -1,18 +1,12 @@
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 import crypto from 'crypto';
 import type { EnvConfig } from '../types.js';
 import type { ApiClient } from './client.js';
 
 /**
- * Login via the HA (Hydra) proxy in a headless browser and extract session
- * cookies. The proxy handles the Auth0 token exchange server-side and stores
- * the resulting tokens in httpOnly cookies. Passing those cookies with
- * subsequent requests authenticates them at the API gateway level.
+ * Build the Hydra /authorize URL used for OIDC login (same for API cookie auth and interactive web login).
  */
-async function getSessionCookies(
-  email: string,
-  envConfig: EnvConfig
-): Promise<string> {
+export function buildHaOAuthAuthorizeUrl(envConfig: EnvConfig): string {
   const { baseUrl } = envConfig;
   const haAuthority = `${baseUrl}/api/id-oidc-proxy/ha`;
   const redirectUri = `${baseUrl}/app/id-oidc-client/signin-callback.html`;
@@ -32,51 +26,79 @@ async function getSessionCookies(
   authUrl.searchParams.set('code_challenge', challenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
+  return authUrl.toString();
+}
+
+/**
+ * Drive the Hydra / Auth0 login flow in an existing Playwright page (email + password).
+ * Ends on the OIDC signin-callback page with session cookies set for the carezen domain.
+ */
+export async function loginThroughHaOAuth(
+  page: Page,
+  email: string,
+  password: string,
+  envConfig: EnvConfig,
+): Promise<void> {
+  const authUrl = buildHaOAuthAuthorizeUrl(envConfig);
+
+  await page.goto(authUrl, {
+    waitUntil: 'networkidle',
+    timeout: 45_000,
+  });
+
+  // Stage 1: Hydra custom login page — enter email
+  const emailInput = page
+    .locator('input[type="email"], input[name="email"], #username, #emailId')
+    .first();
+  await emailInput.waitFor({ timeout: 15_000 });
+  await emailInput.fill(email);
+
+  const continueButton = page.getByRole('button', {
+    name: 'Continue',
+    exact: true,
+  });
+  if (await continueButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await continueButton.click();
+    // Wait for navigation to Auth0 login page
+    await page.waitForURL((url) => url.hostname.includes('login'), {
+      timeout: 20_000,
+    });
+  }
+
+  // Stage 2: Auth0 password page
+  await page.locator('#password').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#password').fill(password);
+
+  const loginSubmit = page
+    .getByRole('button', { name: 'Continue' })
+    .or(page.getByRole('button', { name: 'Log In' }));
+  await loginSubmit.first().waitFor({ state: 'visible', timeout: 10_000 });
+  await loginSubmit.first().click();
+
+  // Wait for the redirect back to the callback page
+  await page.waitForURL(
+    (url) => url.pathname.includes('signin-callback'),
+    { timeout: 30_000 },
+  );
+  await page.waitForTimeout(1_500);
+}
+
+/**
+ * Login via the HA (Hydra) proxy in a headless browser and extract session
+ * cookies. The proxy handles the Auth0 token exchange server-side and stores
+ * the resulting tokens in httpOnly cookies. Passing those cookies with
+ * subsequent requests authenticates them at the API gateway level.
+ */
+async function getSessionCookies(
+  email: string,
+  envConfig: EnvConfig,
+): Promise<string> {
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    await page.goto(authUrl.toString(), {
-      waitUntil: 'networkidle',
-      timeout: 45_000,
-    });
-
-    // Stage 1: Hydra custom login page — enter email
-    const emailInput = page
-      .locator('input[type="email"], input[name="email"], #username, #emailId')
-      .first();
-    await emailInput.waitFor({ timeout: 15_000 });
-    await emailInput.fill(email);
-
-    const continueButton = page.getByRole('button', {
-      name: 'Continue',
-      exact: true,
-    });
-    if (await continueButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await continueButton.click();
-      // Wait for navigation to Auth0 login page
-      await page.waitForURL((url) => url.hostname.includes('login'), {
-        timeout: 20_000,
-      });
-    }
-
-    // Stage 2: Auth0 password page
-    await page.locator('#password').waitFor({ state: 'visible', timeout: 20_000 });
-    await page.locator('#password').fill('letmein1');
-
-    const loginSubmit = page
-      .getByRole('button', { name: 'Continue' })
-      .or(page.getByRole('button', { name: 'Log In' }));
-    await loginSubmit.first().waitFor({ state: 'visible', timeout: 10_000 });
-    await loginSubmit.first().click();
-
-    // Wait for the redirect back to the callback page
-    await page.waitForURL(
-      (url) => url.pathname.includes('signin-callback'),
-      { timeout: 30_000 },
-    );
-    await page.waitForTimeout(1_500);
+    await loginThroughHaOAuth(page, email, 'letmein1', envConfig);
 
     // Extract all cookies for the carezen domain
     const cookies = await context.cookies();
@@ -105,7 +127,7 @@ async function getSessionCookies(
 export async function authenticateClient(
   email: string,
   envConfig: EnvConfig,
-  client: ApiClient
+  client: ApiClient,
 ): Promise<void> {
   const maxRetries = 3;
 

@@ -118,6 +118,105 @@ function createRootProgram(): Command {
       try { await instance.waitUntilExit(); } catch { /* exit with error */ }
       await revertSessionToggles();
     });
+  program
+    .command('seeker-login')
+    .description(
+      'Open Chromium (incognito) and sign in to the member web app (HA/Auth0 — same as API cookie auth)',
+    )
+    .requiredOption('--email <email>', 'Member login email (username)')
+    .option(
+      '--password <password>',
+      'Use only this password (no fallback). If omitted, tries letmein1 then Letmein1.',
+    )
+    .option('--env <env>', `Target environment (${ALL_ENVS.join(', ')})`, 'dev')
+    .option(
+      '--message-cid <cid>',
+      'After login, open /app/messages?cid=… (full value e.g. messaging:!members-… from DB message_cid). Omit to land on /app/mhp only.',
+    )
+    .option(
+      '--auto-close',
+      'Close the browser immediately after landing on the post-login URL (/app/mhp or /app/messages)',
+    )
+    .action(
+      async (opts: {
+        email: string;
+        password?: string;
+        env: string;
+        messageCid?: string;
+        autoClose?: boolean;
+      }) => {
+        const envVal = opts.env as Env;
+        if (!ALL_ENVS.includes(envVal)) {
+          console.error(`Invalid env "${opts.env}". Valid: ${ALL_ENVS.join(', ')}`);
+          process.exit(1);
+        }
+        const envConfig = ENV_CONFIGS[envVal];
+        const passwords = opts.password
+          ? [opts.password]
+          : ['letmein1', 'Letmein1'];
+        const { runSeekerWebLogin } = await import('./steps/seeker-web-login.js');
+        await runSeekerWebLogin({
+          email: opts.email,
+          passwords,
+          envConfig,
+          autoClose: !!opts.autoClose,
+          messageCid: opts.messageCid?.trim() || undefined,
+        });
+      },
+    );
+  program
+    .command('seeker-from-provider')
+    .description(
+      'Look up the seeker (job poster) from a provider email’s latest job application, then open incognito seeker-login',
+    )
+    .requiredOption('--email <email>', 'Provider login email (matches AUTHENTICATION.USERNAME)')
+    .option('--env <env>', `Database and web target (${ALL_ENVS.join(', ')})`, 'dev')
+    .option('--print-only', 'Print seeker Email / MemberId / UUID only; do not open the browser')
+    .option(
+      '--auto-close',
+      'With login: close the browser after landing on /app/mhp (same as seeker-login)',
+    )
+    .action(
+      async (opts: { email: string; env: string; printOnly?: boolean; autoClose?: boolean }) => {
+        const envVal = opts.env as Env;
+        if (!ALL_ENVS.includes(envVal)) {
+          console.error(`Invalid env "${opts.env}". Valid: ${ALL_ENVS.join(', ')}`);
+          process.exit(1);
+        }
+        const envConfig = ENV_CONFIGS[envVal];
+        const { findSeekerFromLatestProviderApplication } = await import(
+          './db/seeker-from-provider.js'
+        );
+        const row = await findSeekerFromLatestProviderApplication(opts.email, envConfig);
+        if (!row) {
+          console.error(
+            `\nNo job application found for provider email "${opts.email.trim()}" in ${envVal} DB.`,
+          );
+          process.exit(1);
+        }
+        console.log('\nSeeker (from provider’s most recent job application):');
+        console.log(`  Email:    ${row.seekerEmail}`);
+        console.log(`  MemberId: ${row.seekerMemberId}`);
+        console.log(`  UUID:     ${row.seekerUuid}`);
+        if (row.appliedAt) {
+          console.log(`  Applied:  ${row.appliedAt} (seeker_job_applicant.id=${row.seekerJobApplicantId})`);
+        } else {
+          console.log(`  (seeker_job_applicant.id=${row.seekerJobApplicantId})`);
+        }
+        if (opts.printOnly) {
+          console.log('');
+          return;
+        }
+        const { runSeekerWebLogin } = await import('./steps/seeker-web-login.js');
+        console.log('\nOpening incognito seeker web login (passwords: Letmein1, then letmein1)…\n');
+        await runSeekerWebLogin({
+          email: row.seekerEmail,
+          passwords: ['Letmein1', 'letmein1'],
+          envConfig,
+          autoClose: !!opts.autoClose,
+        });
+      },
+    );
   program.addCommand(createEnrollmentCommand(), { isDefault: true, hidden: true });
   return program;
 }
@@ -343,27 +442,24 @@ if (isMainModule) {
     console.log(BANNER);
     console.log('  Run `jumper start` for guided mode.\n');
   }
-  if (argv[0] === 'start' || argv[0] === 'flags') {
-    runInteractiveCli(argv).catch((err) => {
-      if (err instanceof CommanderError) {
-        process.exit(err.exitCode);
-      }
-      console.error('Fatal error:', (err as Error).message);
-      process.exit(1);
-    });
-  } else {
-    try {
+  try {
+    if (
+      argv[0] === 'start' ||
+      argv[0] === 'flags' ||
+      argv[0] === 'seeker-login' ||
+      argv[0] === 'seeker-from-provider'
+    ) {
+      // Await so the process stays alive until Playwright / Ink finish (floating promises can exit early).
+      await runInteractiveCli(argv);
+    } else {
       const opts = parseArgs(argv);
-      run(opts).catch((err) => {
-        console.error('Fatal error:', (err as Error).message);
-        process.exit(1);
-      });
-    } catch (err) {
-      if (err instanceof CommanderError) {
-        process.exit(err.exitCode);
-      }
-      console.error('Fatal error:', (err as Error).message);
-      process.exit(1);
+      await run(opts);
     }
+  } catch (err) {
+    if (err instanceof CommanderError) {
+      process.exit(err.exitCode);
+    }
+    console.error('Fatal error:', (err as Error).message);
+    process.exit(1);
   }
 }
